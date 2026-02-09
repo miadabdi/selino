@@ -10,7 +10,7 @@ import {
 } from "@nestjs/common";
 import type { Request } from "express";
 import { AuthService } from "./auth.service.js";
-import { SendOtpDto, VerifyOtpDto } from "./dto/index.js";
+import { RefreshTokenDto, SendOtpDto, VerifyOtpDto } from "./dto/index.js";
 import { GoogleAuthGuard } from "./guards/google-auth.guard.js";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard.js";
 
@@ -62,6 +62,40 @@ export class AuthController {
       lastName?: string;
     };
     return this.authService.handleGoogleLogin(googleUser);
+  }
+
+  /**
+   * POST /auth/refresh
+   * Rotate refresh token and return new access + refresh tokens.
+   */
+  @Post("refresh")
+  @HttpCode(HttpStatus.OK)
+  async refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refreshTokens(dto.refreshToken);
+  }
+
+  /**
+   * POST /auth/logout
+   * Revoke the provided refresh token.
+   */
+  @Post("logout")
+  @HttpCode(HttpStatus.OK)
+  async logout(@Body() dto: RefreshTokenDto) {
+    await this.authService.logout(dto.refreshToken);
+    return { message: "Logged out successfully" };
+  }
+
+  /**
+   * POST /auth/logout-all
+   * Revoke all refresh tokens for the authenticated user.
+   */
+  @Post("logout-all")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async logoutAll(@Req() req: Request) {
+    const user = req.user as { id: number };
+    await this.authService.logoutAll(user.id);
+    return { message: "All sessions revoked" };
   }
 
   /**

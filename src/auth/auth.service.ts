@@ -4,9 +4,11 @@ import type { User } from "../database/schema/index.js";
 import { OtpService } from "../otp/otp.service.js";
 import { UsersService } from "../users/users.service.js";
 import type { JwtPayload } from "./interfaces/jwt-payload.interface.js";
+import { RefreshTokenService } from "./refresh-token.service.js";
 
 export interface AuthTokens {
   accessToken: string;
+  refreshToken: string;
 }
 
 @Injectable()
@@ -15,6 +17,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly otpService: OtpService,
     private readonly jwtService: JwtService,
+    private readonly refreshTokenService: RefreshTokenService,
   ) {}
 
   /**
@@ -76,9 +79,17 @@ export class AuthService {
   }
 
   /**
-   * Generate JWT access token for a user.
+   * Rotate a refresh token and return new access + refresh tokens.
    */
-  private generateTokens(user: User): AuthTokens {
+  async refreshTokens(rawRefreshToken: string): Promise<AuthTokens> {
+    const { newRawToken, tokenRecord } =
+      await this.refreshTokenService.rotate(rawRefreshToken);
+
+    const user = await this.usersService.findById(tokenRecord.userId);
+    if (!user) {
+      throw new UnauthorizedException("User not found");
+    }
+
     const payload: JwtPayload = {
       sub: user.id,
       phone: user.phone,
@@ -87,6 +98,39 @@ export class AuthService {
 
     return {
       accessToken: this.jwtService.sign(payload),
+      refreshToken: newRawToken,
+    };
+  }
+
+  /**
+   * Revoke a refresh token (logout).
+   */
+  async logout(rawRefreshToken: string): Promise<void> {
+    await this.refreshTokenService.revoke(rawRefreshToken, "logout");
+  }
+
+  /**
+   * Revoke all refresh tokens for a user (logout from all devices).
+   */
+  async logoutAll(userId: number): Promise<void> {
+    await this.refreshTokenService.revokeAllForUser(userId, "logout_all");
+  }
+
+  /**
+   * Generate JWT access token and refresh token for a user.
+   */
+  private async generateTokens(user: User): Promise<AuthTokens> {
+    const payload: JwtPayload = {
+      sub: user.id,
+      phone: user.phone,
+      email: user.email,
+    };
+
+    const refreshToken = await this.refreshTokenService.create(user.id);
+
+    return {
+      accessToken: this.jwtService.sign(payload),
+      refreshToken,
     };
   }
 }

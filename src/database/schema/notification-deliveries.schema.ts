@@ -6,7 +6,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { notifications } from "./notifications.schema.js";
+import { notifications } from "./notifications.schema";
 
 export const notificationDeliveries = pgTable("notification_deliveries", {
   id: serial("id").primaryKey(),

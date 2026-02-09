@@ -35,7 +35,7 @@ services:
       - SMTP_FROM=${SMTP_FROM}
     volumes:
       - ./:/home/node/app
-      - node_modules:/home/node/app/node_modules # Named volume for node_modules
+      - node_modules:/home/node/app/node_modules
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -125,6 +125,8 @@ volumes:
   rmq_data:
     driver: local
   node_modules:
+    driver: local
+  dist:
     driver: local
 
 networks:

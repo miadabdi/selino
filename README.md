@@ -57,6 +57,38 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Database
+
+This project uses Drizzle ORM with PostgreSQL for database management.
+
+### Setup
+
+1. Set your database URL in `.env`:
+
+   ```env
+   DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+   ```
+
+2. Generate and apply migrations:
+
+   ```bash
+   # Generate migration from schema
+   npm run db:generate
+
+   # Apply migrations to database
+   npm run db:migrate
+
+   # Or push schema directly (development only)
+   npm run db:push
+   ```
+
+3. Launch Drizzle Studio to browse your database:
+   ```bash
+   npm run db:studio
+   ```
+
+For detailed migration workflow and best practices, see [MIGRATIONS.md](./MIGRATIONS.md).
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
@@ -96,4 +128,5 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
 # selino

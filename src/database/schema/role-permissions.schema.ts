@@ -1,6 +1,6 @@
 import { integer, pgTable, serial, uniqueIndex } from "drizzle-orm/pg-core";
-import { permissions } from "./permissions.schema.js";
-import { roles } from "./roles.schema.js";
+import { permissions } from "./permissions.schema";
+import { roles } from "./roles.schema";
 
 export const rolePermissions = pgTable(
   "role_permissions",

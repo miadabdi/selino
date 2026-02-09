@@ -1,0 +1,132 @@
+services:
+  # NestJS Application
+  app:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+      target: development
+    command: npm run start:debug
+    profiles:
+      - development
+      - test
+    ports:
+      - "${PORT:-3000}:3000"
+      - "9229:9229" # Debug port for Node.js debugging
+    networks:
+      - selino_network
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=${PORT:-3000}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-selino_user}:${POSTGRES_PASSWORD:-selino_pass}@db:5432/${POSTGRES_DB:-selino}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+      - REFRESH_TOKEN_EXPIRES_IN_DAYS=${REFRESH_TOKEN_EXPIRES_IN_DAYS}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL}
+      - RABBITMQ_URI=amqp://${RABBITMQ_USER:-selino_rmq}:${RABBITMQ_PASS:-selino_rmq_pass}@rmq:5672
+      - SMS_PROVIDER=${SMS_PROVIDER}
+      - KAVENEGAR_API_KEY=${KAVENEGAR_API_KEY}
+      - KAVENEGAR_SENDER=${KAVENEGAR_SENDER}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM=${SMTP_FROM}
+    volumes:
+      - ./:/home/node/app
+      - node_modules:/home/node/app/node_modules # Named volume for node_modules
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      db:
+        condition: service_healthy
+      rmq:
+        condition: service_healthy
+
+  # PostgreSQL Database (Development)
+  db:
+    image: postgres:18.1-bookworm
+    restart: unless-stopped
+    profiles:
+      - development
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-selino}
+      POSTGRES_USER: ${POSTGRES_USER:-selino_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-selino_pass}
+      PGUSER: ${POSTGRES_USER:-selino_user}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - selino_network
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # PostgreSQL Database (Testing)
+  db_test:
+    image: postgres:18.1-bookworm
+    restart: unless-stopped
+    profiles:
+      - test
+    environment:
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-selino_test}
+      POSTGRES_USER: ${POSTGRES_USER:-selino_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-selino_pass}
+      PGUSER: ${POSTGRES_USER:-selino_user}
+    ports:
+      - "${POSTGRES_TEST_PORT:-5433}:5432"
+    networks:
+      - selino_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # RabbitMQ Message Broker
+  rmq:
+    image: rabbitmq:3.13-management-alpine
+    hostname: selino-rmq
+    profiles:
+      - development
+      - test
+    restart: unless-stopped
+    networks:
+      - selino_network
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672" # AMQP port
+      - "${RABBITMQ_CONSOLE_PORT:-15672}:15672" # Management UI
+    volumes:
+      - rmq_data:/var/lib/rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-selino_rmq}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-selino_rmq_pass}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  db_data:
+    driver: local
+  rmq_data:
+    driver: local
+  node_modules:
+    driver: local
+
+networks:
+  selino_network:
+    driver: bridge

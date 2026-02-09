@@ -112,3 +112,4 @@ nest generate service feature-name
 - Write meaningful commit messages
 - Add tests for new features
 - Document API endpoints and modules
+- always run `npm build` to test codebase syntax

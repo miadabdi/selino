@@ -1,9 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { SmsProvider, type SmsSendResult } from "../sms-provider.abstract.js";
+import { SmsProvider, type SmsSendResult } from "./sms-provider.abstract.js";
 
 /**
- * Console-based SMS provider for development/testing.
- * Logs the SMS content to the console instead of actually sending it.
+ * Console-based SMS provider for development / testing.
+ * Logs the message to the console instead of sending a real SMS.
  */
 @Injectable()
 export class ConsoleSmsProvider extends SmsProvider {

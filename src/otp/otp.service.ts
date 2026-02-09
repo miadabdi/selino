@@ -3,7 +3,8 @@ import { and, eq, gt } from "drizzle-orm";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
 import { authOtps } from "../database/schema/index.js";
-import { SmsProvider } from "../sms/sms-provider.abstract.js";
+import { NotificationChannel } from "../notification/notification.enums.js";
+import { NotificationService } from "../notification/notification.service.js";
 
 @Injectable()
 export class OtpService {
@@ -15,7 +16,7 @@ export class OtpService {
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
-    private readonly smsProvider: SmsProvider,
+    private readonly notificationService: NotificationService,
   ) {}
 
   /**
@@ -42,10 +43,13 @@ export class OtpService {
       consumed: false,
     });
 
-    await this.smsProvider.send(
-      phone,
-      `Your Selino verification code is: ${code}`,
-    );
+    await this.notificationService.send({
+      channel: NotificationChannel.SMS,
+      destination: phone,
+      type: "otp",
+      body: `Your Selino verification code is: ${code}`,
+      userId: userId ?? undefined,
+    });
   }
 
   /**

@@ -49,6 +49,7 @@ export class OtpService {
       type: "otp",
       body: `Your Selino verification code is: ${code}`,
       userId: userId ?? undefined,
+      metadata: { code },
     });
   }
 

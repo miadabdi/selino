@@ -26,7 +26,8 @@ export class NotificationService {
    *   via the channel handler (strategy pattern).
    */
   async send(options: SendNotificationOptions): Promise<void> {
-    const { channel, destination, body, title, type, userId } = options;
+    const { channel, destination, body, title, type, userId, metadata } =
+      options;
 
     let notificationId: number | undefined;
     if (userId) {
@@ -57,6 +58,8 @@ export class NotificationService {
       destination,
       body,
       title,
+      type,
+      metadata,
     });
 
     this.logger.debug(`Notification queued via ${channel} → ${destination}`);

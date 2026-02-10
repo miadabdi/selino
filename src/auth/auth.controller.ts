@@ -8,12 +8,27 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiExcludeEndpoint,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from "@nestjs/swagger";
 import type { Request } from "express";
 import { AuthService } from "./auth.service.js";
 import { RefreshTokenDto, SendOtpDto, VerifyOtpDto } from "./dto/index.js";
 import { GoogleAuthGuard } from "./guards/google-auth.guard.js";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard.js";
+import {
+  AuthTokensResponse,
+  MessageResponse,
+  UserProfileResponse,
+} from "./responses/index.js";
 
+@ApiTags("Auth")
 @Controller("auth")
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -24,7 +39,14 @@ export class AuthController {
    */
   @Post("otp/send")
   @HttpCode(HttpStatus.OK)
-  async sendOtp(@Body() dto: SendOtpDto) {
+  @ApiOperation({ summary: "Send OTP to phone number" })
+  @ApiBody({ type: SendOtpDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "OTP sent successfully",
+    type: MessageResponse,
+  })
+  async sendOtp(@Body() dto: SendOtpDto): Promise<MessageResponse> {
     await this.authService.sendPhoneOtp(dto.phone);
     return { message: "OTP sent successfully" };
   }
@@ -35,7 +57,15 @@ export class AuthController {
    */
   @Post("otp/verify")
   @HttpCode(HttpStatus.OK)
-  async verifyOtp(@Body() dto: VerifyOtpDto) {
+  @ApiOperation({ summary: "Verify OTP and get tokens" })
+  @ApiBody({ type: VerifyOtpDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "OTP verified, returns access and refresh tokens",
+    type: AuthTokensResponse,
+  })
+  @ApiUnauthorizedResponse({ description: "Invalid or expired OTP" })
+  async verifyOtp(@Body() dto: VerifyOtpDto): Promise<AuthTokensResponse> {
     return this.authService.verifyPhoneOtp(dto.phone, dto.code);
   }
 
@@ -45,6 +75,11 @@ export class AuthController {
    */
   @Get("google")
   @UseGuards(GoogleAuthGuard)
+  @ApiOperation({ summary: "Initiate Google OAuth2 login" })
+  @ApiResponse({
+    status: HttpStatus.FOUND,
+    description: "Redirects to Google OAuth2 consent screen",
+  })
   googleLogin() {
     // Guard redirects to Google
   }
@@ -55,7 +90,8 @@ export class AuthController {
    */
   @Get("google/callback")
   @UseGuards(GoogleAuthGuard)
-  async googleCallback(@Req() req: Request) {
+  @ApiExcludeEndpoint()
+  async googleCallback(@Req() req: Request): Promise<AuthTokensResponse> {
     const googleUser = req.user as {
       email?: string;
       firstName?: string;
@@ -70,7 +106,15 @@ export class AuthController {
    */
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
-  async refresh(@Body() dto: RefreshTokenDto) {
+  @ApiOperation({ summary: "Rotate refresh token" })
+  @ApiBody({ type: RefreshTokenDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "New access and refresh tokens",
+    type: AuthTokensResponse,
+  })
+  @ApiUnauthorizedResponse({ description: "Invalid or expired refresh token" })
+  async refresh(@Body() dto: RefreshTokenDto): Promise<AuthTokensResponse> {
     return await this.authService.refreshTokens(dto.refreshToken);
   }
 
@@ -80,7 +124,15 @@ export class AuthController {
    */
   @Post("logout")
   @HttpCode(HttpStatus.OK)
-  async logout(@Body() dto: RefreshTokenDto) {
+  @ApiOperation({ summary: "Logout (revoke refresh token)" })
+  @ApiBody({ type: RefreshTokenDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Refresh token revoked",
+    type: MessageResponse,
+  })
+  @ApiUnauthorizedResponse({ description: "Invalid or expired refresh token" })
+  async logout(@Body() dto: RefreshTokenDto): Promise<MessageResponse> {
     await this.authService.logout(dto.refreshToken);
     return { message: "Logged out successfully" };
   }
@@ -92,7 +144,15 @@ export class AuthController {
   @Post("logout-all")
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
-  async logoutAll(@Req() req: Request) {
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Logout from all devices" })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "All refresh tokens revoked",
+    type: MessageResponse,
+  })
+  @ApiUnauthorizedResponse({ description: "Not authenticated" })
+  async logoutAll(@Req() req: Request): Promise<MessageResponse> {
     const user = req.user as { id: number };
     await this.authService.logoutAll(user.id);
     return { message: "All sessions revoked" };
@@ -104,7 +164,15 @@ export class AuthController {
    */
   @Get("me")
   @UseGuards(JwtAuthGuard)
-  getProfile(@Req() req: Request) {
-    return req.user;
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get current user profile" })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Current authenticated user info",
+    type: UserProfileResponse,
+  })
+  @ApiUnauthorizedResponse({ description: "Not authenticated" })
+  getProfile(@Req() req: Request): UserProfileResponse {
+    return req.user as UserProfileResponse;
   }
 }

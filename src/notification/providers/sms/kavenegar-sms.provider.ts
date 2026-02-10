@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import Kavenegar from "kavenegar";
 import { SmsProvider, type SmsSendResult } from "./sms-provider.abstract.js";
 
 /**
@@ -13,14 +14,14 @@ import { SmsProvider, type SmsSendResult } from "./sms-provider.abstract.js";
 @Injectable()
 export class KavenegarSmsProvider extends SmsProvider {
   private readonly logger = new Logger(KavenegarSmsProvider.name);
-  private readonly api: any;
+  private readonly api: Kavenegar.kavenegar.KavenegarInstance;
   private readonly sender: string;
 
   constructor(private readonly configService: ConfigService) {
     super();
     // kavenegar is a CommonJS package
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Kavenegar = require("kavenegar");
+    // const Kavenegar = require("kavenegar");
     this.api = Kavenegar.KavenegarApi({
       apikey: this.configService.getOrThrow<string>("KAVENEGAR_API_KEY"),
     });
@@ -31,17 +32,16 @@ export class KavenegarSmsProvider extends SmsProvider {
     return new Promise<SmsSendResult>((resolve) => {
       this.api.Send(
         { message, sender: this.sender, receptor: phone },
-        (response: any, status: number) => {
+        (response: any, status: number, message: string) => {
           if (status === 200) {
             const messageId = response?.[0]?.messageid?.toString();
             this.logger.log(`SMS sent to ${phone} (messageId: ${messageId})`);
             resolve({ success: true, messageId });
           } else {
-            const error = JSON.stringify(response);
             this.logger.error(
-              `SMS to ${phone} failed (status ${status}): ${error}`,
+              `SMS to ${phone} failed (status ${status}): message: ${message}`,
             );
-            resolve({ success: false, error });
+            resolve({ success: false, error: message });
           }
         },
       );

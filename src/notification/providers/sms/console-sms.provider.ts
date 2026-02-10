@@ -16,4 +16,12 @@ export class ConsoleSmsProvider extends SmsProvider {
       messageId: `dev-${Date.now()}`,
     });
   }
+
+  override sendVerifyCode(phone: string, code: string): Promise<SmsSendResult> {
+    this.logger.log(`[DEV SMS Verify] To: ${phone} | Code: ${code}`);
+    return Promise.resolve({
+      success: true,
+      messageId: `dev-verify-${Date.now()}`,
+    });
+  }
 }

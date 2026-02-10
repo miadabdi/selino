@@ -18,4 +18,10 @@ export interface NotificationJobPayload {
 
   /** Optional title / subject. */
   title?: string;
+
+  /** Notification type identifier (e.g. "otp", "welcome"). */
+  type?: string;
+
+  /** Optional provider-specific metadata (e.g. { code } for OTP). */
+  metadata?: Record<string, unknown>;
 }

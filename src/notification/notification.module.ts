@@ -13,6 +13,7 @@ import { SmtpEmailProvider } from "./providers/email/smtp-email.provider.js";
 import { ConsoleSmsProvider } from "./providers/sms/console-sms.provider.js";
 import { KavenegarSmsProvider } from "./providers/sms/kavenegar-sms.provider.js";
 import { SmsProvider } from "./providers/sms/sms-provider.abstract.js";
+import { SmsirSmsProvider } from "./providers/sms/smsir-sms.provider.js";
 
 @Module({
   providers: [
@@ -23,6 +24,9 @@ import { SmsProvider } from "./providers/sms/sms-provider.abstract.js";
         const provider = configService.get<string>("SMS_PROVIDER", "console");
         if (provider === "kavenegar") {
           return new KavenegarSmsProvider(configService);
+        }
+        if (provider === "smsir") {
+          return new SmsirSmsProvider(configService);
         }
         return new ConsoleSmsProvider();
       },

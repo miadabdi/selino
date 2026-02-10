@@ -19,10 +19,14 @@ export abstract class NotificationChannelHandler {
    * @param destination - The recipient address (phone, email, device token, etc.)
    * @param body - The message body / content
    * @param title - Optional title / subject
+   * @param type - Optional notification type (e.g. "otp")
+   * @param metadata - Optional provider-specific metadata
    */
   abstract send(
     destination: string,
     body: string,
     title?: string,
+    type?: string,
+    metadata?: Record<string, unknown>,
   ): Promise<ChannelSendResult>;
 }

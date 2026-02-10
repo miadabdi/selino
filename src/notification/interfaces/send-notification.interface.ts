@@ -21,4 +21,7 @@ export interface SendNotificationOptions {
 
   /** Notification body / message content. */
   body: string;
+
+  /** Optional provider-specific metadata (e.g. { code } for OTP). */
+  metadata?: Record<string, unknown>;
 }

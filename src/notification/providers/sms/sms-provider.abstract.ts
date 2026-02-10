@@ -18,4 +18,14 @@ export abstract class SmsProvider {
    * @param message - Message body
    */
   abstract send(phone: string, message: string): Promise<SmsSendResult>;
+
+  /**
+   * Send a verification code via a provider-specific verify-code API.
+   * Falls back to plain `send()` by default.
+   * @param phone - Destination phone number
+   * @param code - Verification code
+   */
+  sendVerifyCode(phone: string, code: string): Promise<SmsSendResult> {
+    return this.send(phone, `Your verification code is: ${code}`);
+  }
 }

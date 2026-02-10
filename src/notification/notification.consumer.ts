@@ -51,7 +51,8 @@ export class NotificationConsumer {
 
   // ── Shared processing logic ────────────────────────────────
   private async processJob(payload: NotificationJobPayload): Promise<void> {
-    const { channel, destination, body, title, deliveryId } = payload;
+    const { channel, destination, body, title, deliveryId, type, metadata } =
+      payload;
 
     this.logger.debug(`Processing ${channel} notification → ${destination}`);
 
@@ -66,7 +67,13 @@ export class NotificationConsumer {
     }
 
     try {
-      const result = await handler.send(destination, body, title);
+      const result = await handler.send(
+        destination,
+        body,
+        title,
+        type,
+        metadata,
+      );
 
       if (deliveryId) {
         await this.db

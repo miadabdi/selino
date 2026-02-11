@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { forwardRef, Global, Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
@@ -11,9 +11,10 @@ import { RefreshTokenService } from "./refresh-token.service.js";
 import { GoogleStrategy } from "./strategies/google.strategy.js";
 import { JwtStrategy } from "./strategies/jwt.strategy.js";
 
+@Global()
 @Module({
   imports: [
-    UsersModule,
+    forwardRef(() => UsersModule),
     OtpModule,
     PassportModule,
     JwtModule.registerAsync({

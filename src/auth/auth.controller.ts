@@ -18,10 +18,13 @@ import {
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
 import type { Request } from "express";
+import type { User } from "../database/schema/index.js";
 import { AuthService } from "./auth.service.js";
+import { GetUser } from "./decorators/index.js";
 import { RefreshTokenDto, SendOtpDto, VerifyOtpDto } from "./dto/index.js";
 import { GoogleAuthGuard } from "./guards/google-auth.guard.js";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard.js";
+import { UserEnrichmentGuard } from "./guards/user-enrichment.guard.js";
 import {
   AuthTokensResponse,
   MessageResponse,
@@ -163,7 +166,7 @@ export class AuthController {
    * Return the current authenticated user's info.
    */
   @Get("me")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, UserEnrichmentGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Get current user profile" })
   @ApiResponse({
@@ -172,7 +175,7 @@ export class AuthController {
     type: UserProfileResponse,
   })
   @ApiUnauthorizedResponse({ description: "Not authenticated" })
-  getProfile(@Req() req: Request): UserProfileResponse {
-    return req.user as UserProfileResponse;
+  getProfile(@GetUser() user: User): User {
+    return user;
   }
 }

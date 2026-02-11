@@ -6,6 +6,7 @@ import { OtpModule } from "../otp/otp.module.js";
 import { UsersModule } from "../users/users.module.js";
 import { AuthController } from "./auth.controller.js";
 import { AuthService } from "./auth.service.js";
+import { UserEnrichmentGuard } from "./guards/user-enrichment.guard.js";
 import { RefreshTokenService } from "./refresh-token.service.js";
 import { GoogleStrategy } from "./strategies/google.strategy.js";
 import { JwtStrategy } from "./strategies/jwt.strategy.js";
@@ -30,7 +31,13 @@ import { JwtStrategy } from "./strategies/jwt.strategy.js";
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, RefreshTokenService, JwtStrategy, GoogleStrategy],
+  providers: [
+    AuthService,
+    RefreshTokenService,
+    JwtStrategy,
+    GoogleStrategy,
+    UserEnrichmentGuard,
+  ],
   exports: [AuthService, RefreshTokenService],
 })
 export class AuthModule {}

@@ -1,12 +1,17 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { ConflictException, Inject, Injectable } from "@nestjs/common";
 import { and, eq, isNull } from "drizzle-orm";
+import { AuthService } from "../auth/auth.service.js";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
 import { users, type NewUser, type User } from "../database/schema/index.js";
+import { UpdateUserDto } from "./dto/update-user.dto.js";
 
 @Injectable()
 export class UsersService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private authService: AuthService,
+  ) {}
 
   async findById(id: number): Promise<User | undefined> {
     const result = await this.db
@@ -62,6 +67,41 @@ export class UsersService {
       .update(users)
       .set({ isEmailVerified: true })
       .where(eq(users.id, id));
+  }
+
+  async update(id: number, data: UpdateUserDto): Promise<User> {
+    // Get current user to check if email changed
+    const currentUser = await this.findById(id);
+    if (!currentUser) {
+      throw new Error("User not found");
+    }
+
+    const updateData: Partial<typeof users.$inferInsert> = { ...data };
+
+    if (currentUser.email == updateData.email) {
+      // Email is the same as current, no change needed
+      delete updateData.email; // Remove email from update data
+    }
+
+    // If email is being changed, mark it as unverified
+    if (updateData.email && updateData.email !== currentUser.email) {
+      const existingUser = await this.findByEmail(updateData.email);
+      if (existingUser && existingUser.id !== currentUser.id) {
+        throw new ConflictException("Email already in use");
+      }
+
+      updateData.isEmailVerified = false;
+      // If email changed, send verification code
+      await this.authService.sendEmailOtp(updateData.email, currentUser.id);
+    }
+
+    const result = await this.db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, id))
+      .returning();
+
+    return result[0];
   }
 
   /**

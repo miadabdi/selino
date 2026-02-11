@@ -18,7 +18,8 @@ export const authOtps = pgTable("auth_otps", {
   userId: integer("user_id").references(() => users.id, {
     onDelete: "set null",
   }),
-  phone: varchar("phone", { length: 20 }).notNull(),
+  phone: varchar("phone", { length: 20 }),
+  email: varchar("email", { length: 255 }),
   code: varchar("code", { length: 10 }).notNull(),
   consumed: boolean("consumed").notNull().default(false),
 });

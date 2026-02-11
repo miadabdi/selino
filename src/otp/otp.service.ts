@@ -37,6 +37,7 @@ export class OtpService {
 
     await this.db.insert(authOtps).values({
       phone,
+      email: null,
       code,
       expiresAt,
       userId: userId ?? null,
@@ -47,6 +48,33 @@ export class OtpService {
       channel: NotificationChannel.SMS,
       destination: phone,
       type: "otp",
+      body: `Your Selino verification code is: ${code}`,
+      userId: userId ?? undefined,
+      metadata: { code },
+    });
+  }
+
+  /**
+   * Create and send a new OTP for the given email address.
+   */
+  async sendEmailOtp(email: string, userId?: number): Promise<void> {
+    const code = this.generateCode();
+    const expiresAt = new Date(Date.now() + this.OTP_TTL_MINUTES * 60 * 1000);
+
+    await this.db.insert(authOtps).values({
+      phone: null,
+      email,
+      code,
+      expiresAt,
+      userId: userId ?? null,
+      consumed: false,
+    });
+
+    await this.notificationService.send({
+      channel: NotificationChannel.EMAIL,
+      destination: email,
+      type: "otp",
+      title: "Email Verification Code",
       body: `Your Selino verification code is: ${code}`,
       userId: userId ?? undefined,
       metadata: { code },
@@ -66,6 +94,38 @@ export class OtpService {
       .where(
         and(
           eq(authOtps.phone, phone),
+          eq(authOtps.code, code),
+          eq(authOtps.consumed, false),
+          gt(authOtps.expiresAt, now),
+        ),
+      )
+      .limit(1);
+
+    const otp = result[0];
+    if (!otp) return false;
+
+    // Mark OTP as consumed
+    await this.db
+      .update(authOtps)
+      .set({ consumed: true })
+      .where(eq(authOtps.id, otp.id));
+
+    return true;
+  }
+
+  /**
+   * Verify an OTP code for the given email address.
+   * Returns true if valid, false otherwise. Marks OTP as consumed on success.
+   */
+  async verifyEmailOtp(email: string, code: string): Promise<boolean> {
+    const now = new Date();
+
+    const result = await this.db
+      .select()
+      .from(authOtps)
+      .where(
+        and(
+          eq(authOtps.email, email),
           eq(authOtps.code, code),
           eq(authOtps.consumed, false),
           gt(authOtps.expiresAt, now),

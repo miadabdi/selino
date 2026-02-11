@@ -3,6 +3,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
 import { authOtps } from "../database/schema/index.js";
+import { NotificationChannel } from "../notification/notification.enums.js";
 import { NotificationService } from "../notification/notification.service.js";
 
 @Injectable()
@@ -42,14 +43,14 @@ export class OtpService {
       consumed: false,
     });
 
-    // await this.notificationService.send({
-    //   channel: NotificationChannel.SMS,
-    //   destination: phone,
-    //   type: "otp",
-    //   body: `Your Selino verification code is: ${code}`,
-    //   userId: userId ?? undefined,
-    //   metadata: { code },
-    // });
+    await this.notificationService.send({
+      channel: NotificationChannel.SMS,
+      destination: phone,
+      type: "otp",
+      body: `Your Selino verification code is: ${code}`,
+      userId: userId ?? undefined,
+      metadata: { code },
+    });
   }
 
   /**

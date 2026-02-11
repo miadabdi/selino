@@ -19,17 +19,20 @@ import {
 } from "@nestjs/swagger";
 import type { Request } from "express";
 import type { User } from "../database/schema/index.js";
+import { UserResponse } from "../users/dto/index.js";
 import { AuthService } from "./auth.service.js";
 import { GetUser } from "./decorators/index.js";
-import { RefreshTokenDto, SendOtpDto, VerifyOtpDto } from "./dto/index.js";
+import {
+  RefreshTokenDto,
+  SendEmailOtpDto,
+  SendOtpDto,
+  VerifyEmailOtpDto,
+  VerifyOtpDto,
+} from "./dto/index.js";
 import { GoogleAuthGuard } from "./guards/google-auth.guard.js";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard.js";
 import { UserEnrichmentGuard } from "./guards/user-enrichment.guard.js";
-import {
-  AuthTokensResponse,
-  MessageResponse,
-  UserProfileResponse,
-} from "./responses/index.js";
+import { AuthTokensResponse, MessageResponse } from "./responses/index.js";
 
 @ApiTags("Auth")
 @Controller("auth")
@@ -70,6 +73,54 @@ export class AuthController {
   @ApiUnauthorizedResponse({ description: "Invalid or expired OTP" })
   async verifyOtp(@Body() dto: VerifyOtpDto): Promise<AuthTokensResponse> {
     return this.authService.verifyPhoneOtp(dto.phone, dto.code);
+  }
+
+  /**
+   * POST /auth/email/send
+   * Send an OTP code to the given email address.
+   */
+  @Post("email/send")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, UserEnrichmentGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Send OTP to email address" })
+  @ApiBody({ type: SendEmailOtpDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "OTP sent successfully",
+    type: MessageResponse,
+  })
+  @ApiUnauthorizedResponse({ description: "Not authenticated" })
+  async sendEmailOtp(
+    @GetUser() user: User,
+    @Body() dto: SendEmailOtpDto,
+  ): Promise<MessageResponse> {
+    await this.authService.sendEmailOtp(dto.email, user.id);
+    return { message: "OTP sent successfully" };
+  }
+
+  /**
+   * POST /auth/email/verify
+   * Verify email OTP and mark email as verified.
+   */
+  @Post("email/verify")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, UserEnrichmentGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Verify email OTP" })
+  @ApiBody({ type: VerifyEmailOtpDto })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Email verified successfully",
+    type: MessageResponse,
+  })
+  @ApiUnauthorizedResponse({ description: "Invalid or expired OTP" })
+  async verifyEmailOtp(
+    @GetUser() user: User,
+    @Body() dto: VerifyEmailOtpDto,
+  ): Promise<MessageResponse> {
+    await this.authService.verifyEmailOtp(dto.email, dto.code);
+    return { message: "Email verified successfully" };
   }
 
   /**
@@ -172,10 +223,10 @@ export class AuthController {
   @ApiResponse({
     status: HttpStatus.OK,
     description: "Current authenticated user info",
-    type: UserProfileResponse,
+    type: UserResponse,
   })
   @ApiUnauthorizedResponse({ description: "Not authenticated" })
-  getProfile(@GetUser() user: User): User {
+  getProfile(@GetUser() user: User): UserResponse {
     return user;
   }
 }

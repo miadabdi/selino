@@ -1,4 +1,9 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import {
+  forwardRef,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import type { User } from "../database/schema/index.js";
 import { OtpService } from "../otp/otp.service.js";
@@ -14,6 +19,7 @@ export interface AuthTokens {
 @Injectable()
 export class AuthService {
   constructor(
+    @Inject(forwardRef(() => UsersService))
     private readonly usersService: UsersService,
     private readonly otpService: OtpService,
     private readonly jwtService: JwtService,
@@ -27,6 +33,13 @@ export class AuthService {
   async sendPhoneOtp(phone: string): Promise<void> {
     const user = await this.usersService.findByPhone(phone);
     await this.otpService.sendOtp(phone, user?.id);
+  }
+
+  /**
+   * Send an OTP to the email address for verification.
+   */
+  async sendEmailOtp(email: string, userId?: number): Promise<void> {
+    await this.otpService.sendEmailOtp(email, userId);
   }
 
   /**
@@ -50,6 +63,22 @@ export class AuthService {
     await this.usersService.updateLastLogin(user.id);
 
     return this.generateTokens(user);
+  }
+
+  /**
+   * Verify email OTP and mark the email as verified for the user.
+   */
+  async verifyEmailOtp(email: string, code: string): Promise<void> {
+    const isValid = await this.otpService.verifyEmailOtp(email, code);
+    if (!isValid) {
+      throw new UnauthorizedException("Invalid or expired OTP");
+    }
+
+    // Find the user by email and mark as verified
+    const user = await this.usersService.findByEmail(email);
+    if (user) {
+      await this.usersService.markEmailVerified(user.id);
+    }
   }
 
   /**

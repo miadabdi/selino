@@ -15,6 +15,20 @@
       "when": 1770798140921,
       "tag": "0001_red_post",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771079889966,
+      "tag": "0002_magical_silver_fox",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1771081620538,
+      "tag": "0003_thankful_saracen",
+      "breakpoints": true
     }
   ]
 }

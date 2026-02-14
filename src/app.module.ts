@@ -4,7 +4,9 @@ import { AppController } from "./app.controller.js";
 import { AppService } from "./app.service.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { DatabaseModule } from "./database/database.module.js";
+import { FilesModule } from "./files/files.module.js";
 import { RabbitmqModule } from "./rabbitmq/rabbitmq.module.js";
+import { StorageModule } from "./storage/storage.module.js";
 import { UsersModule } from "./users/users.module.js";
 
 @Module({
@@ -15,8 +17,10 @@ import { UsersModule } from "./users/users.module.js";
     }),
     DatabaseModule,
     RabbitmqModule,
+    StorageModule,
     AuthModule,
     UsersModule,
+    FilesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

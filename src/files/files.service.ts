@@ -109,6 +109,66 @@ export class FilesService {
   }
 
   /**
+   * Uploads a buffer directly to storage and creates a ready file record.
+   * Use this when the server processes a file (e.g. image resizing) before
+   * storing it, bypassing the presigned-URL flow.
+   */
+  async uploadFromBuffer(
+    bucketKey: BucketKey,
+    buffer: Buffer,
+    filename: string,
+    mimetype: string,
+    uploadedBy?: number,
+  ): Promise<FileRecord> {
+    const bucketConfig = this.storageBuckets[bucketKey];
+    if (!bucketConfig) {
+      throw new BadRequestException(`Unknown bucket key: ${bucketKey}`);
+    }
+
+    if (!bucketConfig.allowedMimetypes.includes(mimetype)) {
+      throw new BadRequestException(
+        `Mimetype "${mimetype}" is not allowed for bucket "${bucketKey}". Allowed: ${bucketConfig.allowedMimetypes.join(", ")}`,
+      );
+    }
+
+    if (buffer.length > bucketConfig.maxFileSizeBytes) {
+      throw new BadRequestException(
+        `File size ${buffer.length} bytes exceeds maximum ${bucketConfig.maxFileSizeBytes} bytes for bucket "${bucketKey}"`,
+      );
+    }
+
+    const ext = extname(filename);
+    const path = `${uuidv4()}${ext}`;
+
+    // Upload to storage
+    await this.storageProvider.upload(
+      bucketConfig.bucketName,
+      path,
+      buffer,
+      mimetype,
+    );
+
+    // Create file record as ready
+    const newFile: NewFileRecord = {
+      bucketName: bucketConfig.bucketName,
+      path,
+      filename,
+      mimetype,
+      sizeInBytes: buffer.length,
+      isPublic: bucketConfig.isPublic,
+      status: "ready",
+      uploadedBy: uploadedBy ?? null,
+    };
+
+    const [fileRecord] = await this.db
+      .insert(files)
+      .values(newFile)
+      .returning();
+
+    return fileRecord;
+  }
+
+  /**
    * Confirms that a file was uploaded to storage and marks it as ready.
    */
   async confirmUpload(fileId: number): Promise<FileRecord> {

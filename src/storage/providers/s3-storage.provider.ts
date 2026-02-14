@@ -42,6 +42,21 @@ export class S3StorageProvider implements StorageProvider {
     this.publicUrlBase = publicUrlBase.replace(/\/+$/, "");
   }
 
+  async upload(
+    bucket: string,
+    key: string,
+    body: Buffer,
+    mimetype: string,
+  ): Promise<void> {
+    const command = new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: mimetype,
+    });
+    await this.client.send(command);
+  }
+
   async getPresignedPutUrl(
     bucket: string,
     key: string,

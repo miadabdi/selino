@@ -1,4 +1,14 @@
 export interface StorageProvider {
+  /**
+   * Upload a buffer directly to storage.
+   */
+  upload(
+    bucket: string,
+    key: string,
+    body: Buffer,
+    mimetype: string,
+  ): Promise<void>;
+
   getPresignedPutUrl(
     bucket: string,
     key: string,

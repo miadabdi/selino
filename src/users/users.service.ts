@@ -1,15 +1,15 @@
 import { ConflictException, Inject, Injectable } from "@nestjs/common";
 import { and, eq, isNull } from "drizzle-orm";
+import sharp from "sharp";
 import { AuthService } from "../auth/auth.service.js";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
 import { users, type NewUser, type User } from "../database/schema/index.js";
 import { FilesService } from "../files/files.service.js";
-import {
-  STORAGE_BUCKETS,
-  type StorageBucketsConfig,
-} from "../storage/index.js";
 import { UpdateUserDto } from "./dto/update-user.dto.js";
+
+/** Standard square resolution for profile pictures (px). */
+const PROFILE_PICTURE_SIZE = 512;
 
 @Injectable()
 export class UsersService {
@@ -17,8 +17,6 @@ export class UsersService {
     @Inject(DATABASE) private readonly db: Database,
     private authService: AuthService,
     private filesService: FilesService,
-    @Inject(STORAGE_BUCKETS)
-    private readonly storageBuckets: StorageBucketsConfig,
   ) {}
 
   async findById(id: number): Promise<User | undefined> {
@@ -77,7 +75,11 @@ export class UsersService {
       .where(eq(users.id, id));
   }
 
-  async update(id: number, data: UpdateUserDto): Promise<User> {
+  async update(
+    id: number,
+    data: UpdateUserDto,
+    profilePicture?: Express.Multer.File,
+  ): Promise<User> {
     // Get current user to check if email changed
     const currentUser = await this.findById(id);
     if (!currentUser) {
@@ -86,19 +88,30 @@ export class UsersService {
 
     const updateData: Partial<typeof users.$inferInsert> = { ...data };
 
-    // If profilePictureId is being set, validate the file is ready and in
-    // the correct bucket before allowing the association.
-    if (updateData.profilePictureId != null) {
-      const file = await this.filesService.assertFileReady(
-        updateData.profilePictureId,
+    // Process profile picture if provided
+    if (profilePicture) {
+      const processedBuffer = await this.processProfileImage(
+        profilePicture.buffer,
       );
 
-      // Ensure the file belongs to the profileMedia bucket
-      if (file.bucketName !== this.storageBuckets.profileMedia.bucketName) {
-        throw new ConflictException(
-          "Profile picture must be uploaded to the profileMedia bucket",
-        );
+      // Delete old profile picture if exists
+      if (currentUser.profilePictureId != null) {
+        await this.filesService
+          .softDelete(currentUser.profilePictureId)
+          .catch(() => {
+            // Old file cleanup is best-effort
+          });
       }
+
+      const fileRecord = await this.filesService.uploadFromBuffer(
+        "profileMedia",
+        processedBuffer,
+        "profile.jpg",
+        "image/jpeg",
+        id,
+      );
+
+      updateData.profilePictureId = fileRecord.id;
     }
 
     if (currentUser.email == updateData.email) {
@@ -162,5 +175,19 @@ export class UsersService {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Converts any image buffer to a square JPEG at the standard profile
+   * picture resolution, using sharp.
+   */
+  private async processProfileImage(buffer: Buffer): Promise<Buffer> {
+    return sharp(buffer)
+      .resize(PROFILE_PICTURE_SIZE, PROFILE_PICTURE_SIZE, {
+        fit: "cover",
+        position: "centre",
+      })
+      .jpeg({ quality: 85, mozjpeg: true })
+      .toBuffer();
   }
 }

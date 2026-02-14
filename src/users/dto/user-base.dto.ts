@@ -34,6 +34,8 @@ export class UserBase {
   @ApiPropertyOptional({
     description: "Deletion timestamp (soft delete)",
     example: null,
+    type: Date,
+    nullable: true,
   })
   @IsOptional()
   @IsDate()
@@ -50,6 +52,8 @@ export class UserBase {
   @ApiPropertyOptional({
     description: "User's email address",
     example: "user@example.com",
+    type: String,
+    nullable: true,
   })
   @IsOptional()
   @IsEmail()
@@ -59,6 +63,8 @@ export class UserBase {
   @ApiPropertyOptional({
     description: "User's first name",
     example: "John",
+    type: String,
+    nullable: true,
   })
   @IsOptional()
   @IsString()
@@ -68,6 +74,8 @@ export class UserBase {
   @ApiPropertyOptional({
     description: "User's last name",
     example: "Doe",
+    type: String,
+    nullable: true,
   })
   @IsOptional()
   @IsString()
@@ -77,6 +85,8 @@ export class UserBase {
   @ApiPropertyOptional({
     description: "Last login timestamp",
     example: "2024-01-01T00:00:00.000Z",
+    type: Date,
+    nullable: true,
   })
   @IsOptional()
   @IsDate()
@@ -99,6 +109,8 @@ export class UserBase {
   @ApiPropertyOptional({
     description: "Profile picture file ID (FK to files.id)",
     example: 42,
+    type: Number,
+    nullable: true,
   })
   @IsOptional()
   @IsInt()
@@ -107,6 +119,8 @@ export class UserBase {
   @ApiPropertyOptional({
     description: "Resolved profile picture URL",
     example: "https://storage.example.com/profile-media/uuid.jpg",
+    type: String,
+    nullable: true,
   })
   @IsOptional()
   @IsString()

@@ -1,4 +1,5 @@
 export * from "./auth-otps.schema";
+export * from "./files.schema";
 export * from "./notification-deliveries.schema";
 export * from "./notifications.schema";
 export * from "./permissions.schema";

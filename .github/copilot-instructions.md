@@ -113,3 +113,6 @@ nest generate service feature-name
 - Add tests for new features
 - Document API endpoints and modules
 - always run `npm build` to test codebase syntax
+- always let drizzle handle migrations
+  - use `db:generate` script to generate migrations from changes to schema
+  - do not use `db:migrate`, that actually migrates the db and it should be done manually

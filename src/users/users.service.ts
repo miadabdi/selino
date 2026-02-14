@@ -4,6 +4,11 @@ import { AuthService } from "../auth/auth.service.js";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
 import { users, type NewUser, type User } from "../database/schema/index.js";
+import { FilesService } from "../files/files.service.js";
+import {
+  STORAGE_BUCKETS,
+  type StorageBucketsConfig,
+} from "../storage/index.js";
 import { UpdateUserDto } from "./dto/update-user.dto.js";
 
 @Injectable()
@@ -11,6 +16,9 @@ export class UsersService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private authService: AuthService,
+    private filesService: FilesService,
+    @Inject(STORAGE_BUCKETS)
+    private readonly storageBuckets: StorageBucketsConfig,
   ) {}
 
   async findById(id: number): Promise<User | undefined> {
@@ -78,6 +86,21 @@ export class UsersService {
 
     const updateData: Partial<typeof users.$inferInsert> = { ...data };
 
+    // If profilePictureId is being set, validate the file is ready and in
+    // the correct bucket before allowing the association.
+    if (updateData.profilePictureId != null) {
+      const file = await this.filesService.assertFileReady(
+        updateData.profilePictureId,
+      );
+
+      // Ensure the file belongs to the profileMedia bucket
+      if (file.bucketName !== this.storageBuckets.profileMedia.bucketName) {
+        throw new ConflictException(
+          "Profile picture must be uploaded to the profileMedia bucket",
+        );
+      }
+    }
+
     if (currentUser.email == updateData.email) {
       // Email is the same as current, no change needed
       delete updateData.email; // Remove email from update data
@@ -123,5 +146,21 @@ export class UsersService {
       phone: data.phone ?? "",
       isEmailVerified: true,
     });
+  }
+
+  /**
+   * Resolves the profile picture URL for a user.
+   * Returns null if no profile picture is set.
+   */
+  async resolveProfilePictureUrl(user: User): Promise<string | null> {
+    if (user.profilePictureId == null) {
+      return null;
+    }
+
+    try {
+      return await this.filesService.resolveUrl(user.profilePictureId);
+    } catch {
+      return null;
+    }
   }
 }

@@ -1,5 +1,6 @@
 import {
   boolean,
+  integer,
   pgTable,
   serial,
   timestamp,
@@ -22,6 +23,10 @@ export const users = pgTable("users", {
 
   firstName: varchar("first_name", { length: 100 }),
   lastName: varchar("last_name", { length: 100 }),
+
+  // FK to files.id — reference not declared here to avoid circular import
+  // with files.schema.ts. The FK constraint is defined in the migration.
+  profilePictureId: integer("profile_picture_id"),
 
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
 

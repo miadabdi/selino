@@ -95,4 +95,20 @@ export class UserBase {
   })
   @IsBoolean()
   isEmailVerified: boolean;
+
+  @ApiPropertyOptional({
+    description: "Profile picture file ID (FK to files.id)",
+    example: 42,
+  })
+  @IsOptional()
+  @IsInt()
+  profilePictureId?: number | null;
+
+  @ApiPropertyOptional({
+    description: "Resolved profile picture URL",
+    example: "https://storage.example.com/profile-media/uuid.jpg",
+  })
+  @IsOptional()
+  @IsString()
+  profilePictureUrl?: string | null;
 }

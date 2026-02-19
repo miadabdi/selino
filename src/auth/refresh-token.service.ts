@@ -4,7 +4,13 @@ import { createHash, randomBytes } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
-import { refreshTokens, type RefreshToken } from "../database/schema/index.js";
+import {
+  refreshTokens,
+  type NewRefreshToken,
+  type RefreshToken,
+} from "../database/schema/index.js";
+
+type RefreshTokenRevokedReason = NonNullable<NewRefreshToken["revokedReason"]>;
 
 @Injectable()
 export class RefreshTokenService {
@@ -123,7 +129,10 @@ export class RefreshTokenService {
   /**
    * Revoke a single refresh token by raw value.
    */
-  async revoke(rawToken: string, reason = "logout"): Promise<void> {
+  async revoke(
+    rawToken: string,
+    reason: RefreshTokenRevokedReason = "logout",
+  ): Promise<void> {
     const tokenHash = this.hashToken(rawToken);
 
     await this.db
@@ -144,7 +153,10 @@ export class RefreshTokenService {
   /**
    * Revoke all refresh tokens for a user.
    */
-  async revokeAllForUser(userId: number, reason = "logout_all"): Promise<void> {
+  async revokeAllForUser(
+    userId: number,
+    reason: RefreshTokenRevokedReason = "logout_all",
+  ): Promise<void> {
     await this.db
       .update(refreshTokens)
       .set({

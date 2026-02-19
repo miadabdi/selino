@@ -29,6 +29,34 @@
       "when": 1771081620538,
       "tag": "0003_thankful_saracen",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1771535929905,
+      "tag": "0004_foamy_sage",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1771535942304,
+      "tag": "0005_daffy_pandemic",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1771537194001,
+      "tag": "0006_daffy_felicia_hardy",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1771539321877,
+      "tag": "0007_gifted_bill_hollister",
+      "breakpoints": true
     }
   ]
 }

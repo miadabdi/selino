@@ -1,12 +1,18 @@
 import {
   boolean,
   integer,
+  pgEnum,
   pgTable,
   serial,
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
 import { users } from "./users.schema";
+
+export const refreshTokenRevokedReasonEnum = pgEnum(
+  "refresh_token_revoked_reason",
+  ["logout", "rotate", "admin_revoke", "logout_all", "suspected_reuse"],
+);
 
 export const refreshTokens = pgTable("refresh_tokens", {
   id: serial("id").primaryKey(),
@@ -29,7 +35,7 @@ export const refreshTokens = pgTable("refresh_tokens", {
 
   isRevoked: boolean("is_revoked").notNull().default(false),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
-  revokedReason: varchar("revoked_reason", { length: 255 }),
+  revokedReason: refreshTokenRevokedReasonEnum("revoked_reason"),
 
   replacedBy: integer("replaced_by"),
   rotationCount: integer("rotation_count").notNull().default(0),

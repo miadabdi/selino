@@ -2,12 +2,19 @@ import {
   bigint,
   boolean,
   integer,
+  pgEnum,
   pgTable,
   serial,
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
 import { users } from "./users.schema";
+
+export const fileStatusEnum = pgEnum("file_status", [
+  "pending",
+  "ready",
+  "failed",
+]);
 
 export const files = pgTable("files", {
   id: serial("id").primaryKey(),
@@ -27,7 +34,7 @@ export const files = pgTable("files", {
   sizeInBytes: bigint("size_in_bytes", { mode: "number" }),
   checksum: varchar("checksum", { length: 255 }),
   isPublic: boolean("is_public").notNull().default(false),
-  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  status: fileStatusEnum("status").notNull().default("pending"),
 
   uploadedBy: integer("uploaded_by").references(() => users.id),
 });

@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   boolean,
   date,
   integer,
@@ -26,8 +27,8 @@ export const products = pgTable("products", {
 
   categoryId: integer("category_id")
     .notNull()
-    .references(() => categories.id),
-  brandId: integer("brand_id").references(() => brands.id, {
+    .references((): AnyPgColumn => categories.id),
+  brandId: integer("brand_id").references((): AnyPgColumn => brands.id, {
     onDelete: "set null",
   }),
 
@@ -47,7 +48,7 @@ export const products = pgTable("products", {
   isActive: boolean("is_active").notNull().default(true),
 
   defaultImageFileId: integer("default_image_file_id").references(
-    () => files.id,
+    (): AnyPgColumn => files.id,
     {
       onDelete: "set null",
     },

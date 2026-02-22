@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   boolean,
   integer,
   json,
@@ -31,7 +32,7 @@ export const categories = pgTable("categories", {
     .$onUpdate(() => new Date()),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 
-  parentId: integer("parent_id").references(() => categories.id, {
+  parentId: integer("parent_id").references((): AnyPgColumn => categories.id, {
     onDelete: "set null",
   }),
 

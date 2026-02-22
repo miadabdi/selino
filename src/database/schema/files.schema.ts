@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   bigint,
   boolean,
   integer,
@@ -36,7 +37,7 @@ export const files = pgTable("files", {
   isPublic: boolean("is_public").notNull().default(false),
   status: fileStatusEnum("status").notNull().default("pending"),
 
-  uploadedBy: integer("uploaded_by").references(() => users.id),
+  uploadedBy: integer("uploaded_by").references((): AnyPgColumn => users.id),
 });
 
 export type FileRecord = typeof files.$inferSelect;

@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   integer,
   pgTable,
   serial,
@@ -23,11 +24,11 @@ export const stores = pgTable("stores", {
   name: varchar("name", { length: 255 }).notNull(),
   slug: varchar("slug", { length: 255 }).unique(),
   description: text("description"),
-  logoFileId: integer("logo_file_id").references(() => files.id, {
+  logoFileId: integer("logo_file_id").references((): AnyPgColumn => files.id, {
     onDelete: "set null",
   }),
 
-  ownerId: integer("owner_id").references(() => users.id, {
+  ownerId: integer("owner_id").references((): AnyPgColumn => users.id, {
     onDelete: "set null",
   }),
 });

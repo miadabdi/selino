@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   boolean,
   integer,
   numeric,
@@ -25,10 +26,10 @@ export const storeInventories = pgTable(
 
     storeId: integer("store_id")
       .notNull()
-      .references(() => stores.id, { onDelete: "cascade" }),
+      .references((): AnyPgColumn => stores.id, { onDelete: "cascade" }),
     productId: integer("product_id")
       .notNull()
-      .references(() => products.id),
+      .references((): AnyPgColumn => products.id),
 
     price: numeric("price", { mode: "number" }).notNull(),
     stock: integer("stock").notNull().default(0),
@@ -37,7 +38,7 @@ export const storeInventories = pgTable(
     maxOrderQty: integer("max_order_qty"),
     isActive: boolean("is_active").notNull().default(true),
     visible: boolean("visible").notNull().default(true),
-    createdBy: integer("created_by").references(() => users.id, {
+    createdBy: integer("created_by").references((): AnyPgColumn => users.id, {
       onDelete: "set null",
     }),
   },

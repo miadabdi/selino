@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   boolean,
   integer,
   pgEnum,
@@ -10,12 +11,23 @@ import {
 import { stores } from "./stores.schema";
 import { users } from "./users.schema";
 
-export const storeMemberRoleEnum = pgEnum("store_member_role", [
-  "owner",
-  "manager",
-  "seller",
-  "gatherer",
-]);
+export enum StoreMemberRole {
+  Owner = "owner",
+  Manager = "manager",
+  Seller = "seller",
+  Gatherer = "gatherer",
+}
+
+export const storeMemberRoleEnum = pgEnum(
+  "store_member_role",
+  Object.values(StoreMemberRole) as [StoreMemberRole, ...StoreMemberRole[]],
+);
+
+export const MANAGING_STORE_MEMBER_ROLES: readonly StoreMemberRole[] = [
+  StoreMemberRole.Owner,
+  StoreMemberRole.Manager,
+  StoreMemberRole.Seller,
+];
 
 export const storeMembers = pgTable(
   "store_members",
@@ -23,11 +35,11 @@ export const storeMembers = pgTable(
     id: serial("id").primaryKey(),
     storeId: integer("store_id")
       .notNull()
-      .references(() => stores.id, { onDelete: "cascade" }),
+      .references((): AnyPgColumn => stores.id, { onDelete: "cascade" }),
     userId: integer("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    role: storeMemberRoleEnum("role"),
+      .references((): AnyPgColumn => users.id, { onDelete: "cascade" }),
+    role: storeMemberRoleEnum("role").notNull(),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

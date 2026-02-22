@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   integer,
   pgEnum,
   pgTable,
@@ -24,11 +25,11 @@ export const storeInventoryTransactions = pgTable(
 
     storeInventoryId: integer("store_inventory_id")
       .notNull()
-      .references(() => storeInventories.id, { onDelete: "cascade" }),
+      .references((): AnyPgColumn => storeInventories.id, { onDelete: "cascade" }),
     change: integer("change").notNull(),
     reason: storeInventoryTransactionReasonEnum("reason"),
     reference: varchar("reference", { length: 255 }),
-    changedBy: integer("changed_by").references(() => users.id, {
+    changedBy: integer("changed_by").references((): AnyPgColumn => users.id, {
       onDelete: "set null",
     }),
   },

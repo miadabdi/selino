@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   integer,
   pgEnum,
   pgTable,
@@ -27,7 +28,7 @@ export const notificationDeliveries = pgTable("notification_deliveries", {
 
   notificationId: integer("notification_id")
     .notNull()
-    .references(() => notifications.id, { onDelete: "cascade" }),
+    .references((): AnyPgColumn => notifications.id, { onDelete: "cascade" }),
 
   channel: notificationDeliveryChannelEnum("channel").notNull(),
   destination: varchar("destination", { length: 255 }),

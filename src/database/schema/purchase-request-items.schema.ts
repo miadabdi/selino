@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   integer,
   numeric,
   pgTable,
@@ -17,12 +18,12 @@ export const purchaseRequestItems = pgTable("purchase_request_items", {
 
   purchaseRequestId: integer("purchase_request_id")
     .notNull()
-    .references(() => purchaseRequests.id, { onDelete: "cascade" }),
+    .references((): AnyPgColumn => purchaseRequests.id, { onDelete: "cascade" }),
   productId: integer("product_id")
     .notNull()
-    .references(() => products.id),
+    .references((): AnyPgColumn => products.id),
   storeInventoryId: integer("store_inventory_id").references(
-    () => storeInventories.id,
+    (): AnyPgColumn => storeInventories.id,
     { onDelete: "set null" },
   ),
 

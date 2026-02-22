@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   boolean,
   integer,
   pgTable,
@@ -15,7 +16,7 @@ export const authOtps = pgTable("auth_otps", {
     .defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 
-  userId: integer("user_id").references(() => users.id, {
+  userId: integer("user_id").references((): AnyPgColumn => users.id, {
     onDelete: "set null",
   }),
   phone: varchar("phone", { length: 20 }),

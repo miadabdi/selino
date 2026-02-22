@@ -30,6 +30,7 @@ export const users = pgTable("users", {
 
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
 
+  isAdmin: boolean("is_admin").notNull().default(false),
   isPhoneVerified: boolean("is_phone_verified").notNull().default(false),
   isEmailVerified: boolean("is_email_verified").notNull().default(false),
 });

@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   boolean,
   integer,
   pgEnum,
@@ -26,7 +27,7 @@ export const refreshTokens = pgTable("refresh_tokens", {
 
   userId: integer("user_id")
     .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+    .references((): AnyPgColumn => users.id, { onDelete: "cascade" }),
 
   tokenHash: varchar("token_hash", { length: 64 }).notNull().unique(),
   jti: varchar("jti", { length: 255 }),

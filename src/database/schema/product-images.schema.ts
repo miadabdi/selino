@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   integer,
   pgTable,
   serial,
@@ -16,10 +17,10 @@ export const productImages = pgTable("product_images", {
 
   productId: integer("product_id")
     .notNull()
-    .references(() => products.id, { onDelete: "cascade" }),
+    .references((): AnyPgColumn => products.id, { onDelete: "cascade" }),
   fileId: integer("file_id")
     .notNull()
-    .references(() => files.id, { onDelete: "cascade" }),
+    .references((): AnyPgColumn => files.id, { onDelete: "cascade" }),
 
   position: integer("position").notNull().default(0),
   alt: varchar("alt", { length: 255 }),

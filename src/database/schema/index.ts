@@ -19,3 +19,4 @@ export * from "./store-inventory-transactions.schema";
 export * from "./store-members.schema";
 export * from "./stores.schema";
 export * from "./users.schema";
+export * from "./relations";

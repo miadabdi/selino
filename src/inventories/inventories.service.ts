@@ -1,24 +1,47 @@
+import { subject } from "@casl/ability";
 import { HttpStatus, Inject, Injectable } from "@nestjs/common";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { Action, CaslAbilityFactory } from "../auth/casl/index.js";
+import type { AuthenticatedUser } from "../auth/interfaces/index.js";
 import { throwHttpError } from "../common/http-error.js";
-import type { StockReason } from "../common/stock-reasons.js";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
-import {
-  products,
-  storeInventories,
-  storeInventoryTransactions,
-  stores,
-} from "../database/schema/index.js";
+import { storeInventories } from "../database/schema/index.js";
 import { CreateInventoryDto } from "./dto/create-inventory.dto.js";
 import { RestockInventoryDto } from "./dto/restock-inventory.dto.js";
 import { UpdateInventoryDto } from "./dto/update-inventory.dto.js";
+import { StoreInventoryTransactionsService } from "./store-inventory-transactions.service.js";
 
 @Injectable()
 export class InventoriesService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly caslAbilityFactory: CaslAbilityFactory,
+    private readonly storeInventoryTransactionsService: StoreInventoryTransactionsService,
+  ) {}
 
-  async create(storeId: number, userId: number, dto: CreateInventoryDto) {
+  private assertInventoryCasl(
+    user: AuthenticatedUser,
+    action: Action,
+    storeId: number,
+  ) {
+    const ability = this.caslAbilityFactory.createForUser(user);
+    const allowed = ability.can(action, subject("Inventory", { storeId }));
+
+    if (!allowed) {
+      throwHttpError(
+        HttpStatus.FORBIDDEN,
+        "You do not have permission for this action",
+      );
+    }
+  }
+
+  async create(
+    storeId: number,
+    user: AuthenticatedUser,
+    dto: CreateInventoryDto,
+  ) {
+    this.assertInventoryCasl(user, Action.Create, storeId);
     await this.assertStoreExists(storeId);
     await this.assertProductExists(dto.productId);
 
@@ -33,17 +56,17 @@ export class InventoriesService {
         maxOrderQty: dto.maxOrderQty ?? null,
         isActive: dto.isActive ?? true,
         visible: dto.visible ?? true,
-        createdBy: userId,
+        createdBy: user.id,
       })
       .returning();
 
     if ((dto.stock ?? 0) > 0) {
-      await this.insertTransaction(
+      await this.storeInventoryTransactionsService.create(
         created.id,
         dto.stock ?? 0,
         "restock",
         `inventory:${created.id}:create`,
-        userId,
+        user.id,
       );
     }
 
@@ -53,9 +76,10 @@ export class InventoriesService {
   async restock(
     storeId: number,
     inventoryId: number,
-    userId: number,
+    user: AuthenticatedUser,
     dto: RestockInventoryDto,
   ) {
+    this.assertInventoryCasl(user, Action.Update, storeId);
     await this.assertInventory(storeId, inventoryId);
 
     const [updated] = await this.db
@@ -72,12 +96,12 @@ export class InventoriesService {
       )
       .returning();
 
-    await this.insertTransaction(
+    await this.storeInventoryTransactionsService.create(
       inventoryId,
       dto.qty,
       dto.reason,
       `inventory:${inventoryId}:restock`,
-      userId,
+      user.id,
     );
 
     return updated;
@@ -86,19 +110,21 @@ export class InventoriesService {
   async list(storeId: number) {
     await this.assertStoreExists(storeId);
 
-    const rows = await this.db
-      .select()
-      .from(storeInventories)
-      .where(eq(storeInventories.storeId, storeId))
-      .orderBy(asc(storeInventories.id));
+    const rows = await this.db.query.storeInventories.findMany({
+      where: (table) => eq(table.storeId, storeId),
+      orderBy: (table) => [asc(table.id)],
+    });
 
-    return rows.map((row) => ({
-      ...row,
-      availableStock: row.stock - row.reservedStock,
-    }));
+    return rows;
   }
 
-  async update(storeId: number, inventoryId: number, dto: UpdateInventoryDto) {
+  async update(
+    storeId: number,
+    inventoryId: number,
+    user: AuthenticatedUser,
+    dto: UpdateInventoryDto,
+  ) {
+    this.assertInventoryCasl(user, Action.Update, storeId);
     await this.assertInventory(storeId, inventoryId);
 
     const [updated] = await this.db
@@ -119,30 +145,19 @@ export class InventoriesService {
       )
       .returning();
 
-    return {
-      ...updated,
-      availableStock: updated.stock - updated.reservedStock,
-    };
+    return updated;
   }
 
   async listTransactions(storeId: number, inventoryId: number) {
     await this.assertInventory(storeId, inventoryId);
 
-    return this.db
-      .select()
-      .from(storeInventoryTransactions)
-      .where(eq(storeInventoryTransactions.storeInventoryId, inventoryId))
-      .orderBy(asc(storeInventoryTransactions.id));
+    return this.storeInventoryTransactionsService.listByInventoryId(
+      inventoryId,
+    );
   }
 
-  async reserveStockAtomic(
-    tx: any,
-    inventoryId: number,
-    qty: number,
-    reference: string,
-    changedBy: number,
-  ) {
-    const result = await tx
+  async reserveStock(inventoryId: number, qty: number) {
+    const result = await this.db
       .update(storeInventories)
       .set({
         reservedStock: sql`${storeInventories.reservedStock} + ${qty}`,
@@ -160,27 +175,11 @@ export class InventoriesService {
       throwHttpError(HttpStatus.CONFLICT, "Out of stock");
     }
 
-    await this.insertTransactionWithTx(
-      tx,
-      inventoryId,
-      qty,
-      "adjustment",
-      reference,
-      changedBy,
-    );
-
     return result[0];
   }
 
-  async releaseReservedStockAtomic(
-    tx: any,
-    inventoryId: number,
-    qty: number,
-    reason: Extract<StockReason, "cancellation" | "reservation_expired">,
-    reference: string,
-    changedBy: number,
-  ) {
-    const result = await tx
+  async releaseReservedStock(inventoryId: number, qty: number) {
+    const result = await this.db
       .update(storeInventories)
       .set({
         reservedStock: sql`${storeInventories.reservedStock} - ${qty}`,
@@ -197,15 +196,6 @@ export class InventoriesService {
     if (result.length === 0) {
       throwHttpError(HttpStatus.CONFLICT, "Stock reservation conflict");
     }
-
-    await this.insertTransactionWithTx(
-      tx,
-      inventoryId,
-      -qty,
-      reason,
-      reference,
-      changedBy,
-    );
 
     return result[0];
   }
@@ -237,7 +227,7 @@ export class InventoriesService {
       throwHttpError(HttpStatus.CONFLICT, "Insufficient stock for sale");
     }
 
-    await this.insertTransactionWithTx(
+    await this.storeInventoryTransactionsService.createWithTx(
       tx,
       inventoryId,
       -qty,
@@ -250,16 +240,10 @@ export class InventoriesService {
   }
 
   async assertInventory(storeId: number, inventoryId: number) {
-    const [inventory] = await this.db
-      .select()
-      .from(storeInventories)
-      .where(
-        and(
-          eq(storeInventories.id, inventoryId),
-          eq(storeInventories.storeId, storeId),
-        ),
-      )
-      .limit(1);
+    const inventory = await this.db.query.storeInventories.findFirst({
+      where: (table) =>
+        and(eq(table.id, inventoryId), eq(table.storeId, storeId)),
+    });
 
     if (!inventory) {
       throwHttpError(HttpStatus.NOT_FOUND, "Inventory not found");
@@ -269,11 +253,9 @@ export class InventoriesService {
   }
 
   async findInventoryById(inventoryId: number) {
-    const [inventory] = await this.db
-      .select()
-      .from(storeInventories)
-      .where(eq(storeInventories.id, inventoryId))
-      .limit(1);
+    const inventory = await this.db.query.storeInventories.findFirst({
+      where: (table) => eq(table.id, inventoryId),
+    });
 
     if (!inventory) {
       throwHttpError(
@@ -287,11 +269,10 @@ export class InventoriesService {
   }
 
   private async assertStoreExists(storeId: number) {
-    const [store] = await this.db
-      .select({ id: stores.id })
-      .from(stores)
-      .where(and(eq(stores.id, storeId), isNull(stores.deletedAt)))
-      .limit(1);
+    const store = await this.db.query.stores.findFirst({
+      columns: { id: true },
+      where: (table) => and(eq(table.id, storeId), isNull(table.deletedAt)),
+    });
 
     if (!store) {
       throwHttpError(HttpStatus.NOT_FOUND, "Store not found");
@@ -299,47 +280,13 @@ export class InventoriesService {
   }
 
   private async assertProductExists(productId: number) {
-    const [product] = await this.db
-      .select({ id: products.id })
-      .from(products)
-      .where(and(eq(products.id, productId), isNull(products.deletedAt)))
-      .limit(1);
+    const product = await this.db.query.products.findFirst({
+      columns: { id: true },
+      where: (table) => and(eq(table.id, productId), isNull(table.deletedAt)),
+    });
 
     if (!product) {
       throwHttpError(HttpStatus.BAD_REQUEST, "Product not found", "productId");
     }
-  }
-
-  private async insertTransaction(
-    inventoryId: number,
-    change: number,
-    reason: StockReason,
-    reference: string,
-    changedBy: number,
-  ) {
-    await this.db.insert(storeInventoryTransactions).values({
-      storeInventoryId: inventoryId,
-      change,
-      reason,
-      reference,
-      changedBy,
-    });
-  }
-
-  private async insertTransactionWithTx(
-    tx: any,
-    inventoryId: number,
-    change: number,
-    reason: StockReason,
-    reference: string,
-    changedBy: number,
-  ) {
-    await tx.insert(storeInventoryTransactions).values({
-      storeInventoryId: inventoryId,
-      change,
-      reason,
-      reference,
-      changedBy,
-    });
   }
 }

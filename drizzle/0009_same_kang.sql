@@ -1,0 +1,1 @@
+ALTER TABLE "store_members" ALTER COLUMN "role" SET NOT NULL;

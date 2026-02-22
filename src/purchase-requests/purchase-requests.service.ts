@@ -1,3 +1,4 @@
+import { subject } from "@casl/ability";
 import {
   HttpStatus,
   Inject,
@@ -5,7 +6,9 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from "@nestjs/common";
-import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
+import { and, desc, eq, exists, gt, lt, sql } from "drizzle-orm";
+import { Action, CaslAbilityFactory } from "../auth/casl/index.js";
+import type { AuthenticatedUser } from "../auth/interfaces/index.js";
 import { throwHttpError } from "../common/http-error.js";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
@@ -26,6 +29,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly inventoriesService: InventoriesService,
+    private readonly caslAbilityFactory: CaslAbilityFactory,
   ) {}
 
   onModuleInit() {
@@ -44,6 +48,10 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     const inventory = await this.inventoriesService.findInventoryById(
       dto.storeInventoryId,
     );
+
+    if (!inventory) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Store inventory not found");
+    }
 
     return this.db.transaction(async (tx) => {
       const activeReservationRows = await tx
@@ -113,13 +121,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
           .where(eq(purchaseRequests.id, requestId));
       }
 
-      await this.inventoriesService.reserveStockAtomic(
-        tx,
-        inventory.id,
-        dto.qty,
-        `purchase_request:${requestId}`,
-        userId,
-      );
+      await this.inventoriesService.reserveStock(inventory.id, dto.qty);
 
       const [item] = await tx
         .insert(purchaseRequestItems)
@@ -139,7 +141,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async removeItem(userId: number, itemId: number) {
+  async removeItem(user: AuthenticatedUser, itemId: number) {
     return this.db.transaction(async (tx) => {
       const [item] = await tx
         .select({
@@ -147,37 +149,60 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
           qty: purchaseRequestItems.qty,
           storeInventoryId: purchaseRequestItems.storeInventoryId,
           purchaseRequestId: purchaseRequestItems.purchaseRequestId,
+          requesterId: purchaseRequests.requesterId,
+          purchaseRequestStatus: purchaseRequests.status,
         })
         .from(purchaseRequestItems)
         .innerJoin(
           purchaseRequests,
           eq(purchaseRequestItems.purchaseRequestId, purchaseRequests.id),
         )
-        .where(
-          and(
-            eq(purchaseRequestItems.id, itemId),
-            eq(purchaseRequests.requesterId, userId),
-            eq(purchaseRequests.status, "new"),
-          ),
-        )
+        .where(eq(purchaseRequestItems.id, itemId))
         .limit(1);
 
       if (!item) {
         throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
       }
 
-      await tx
-        .delete(purchaseRequestItems)
-        .where(eq(purchaseRequestItems.id, item.id));
+      this.assertCanUpdatePurchaseRequest(user, item.requesterId);
 
-      if (item.storeInventoryId != null) {
-        await this.inventoriesService.releaseReservedStockAtomic(
-          tx,
-          item.storeInventoryId,
-          item.qty,
-          "cancellation",
-          `purchase_request:${item.purchaseRequestId}`,
-          userId,
+      if (item.purchaseRequestStatus !== "new") {
+        throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
+      }
+
+      const [removedItem] = await tx
+        .delete(purchaseRequestItems)
+        .where(
+          and(
+            eq(purchaseRequestItems.id, item.id),
+            eq(purchaseRequestItems.purchaseRequestId, item.purchaseRequestId),
+            exists(
+              tx
+                .select({ id: purchaseRequests.id })
+                .from(purchaseRequests)
+                .where(
+                  and(
+                    eq(purchaseRequests.id, item.purchaseRequestId),
+                    eq(purchaseRequests.requesterId, item.requesterId),
+                    eq(purchaseRequests.status, "new"),
+                  ),
+                ),
+            ),
+          ),
+        )
+        .returning({
+          qty: purchaseRequestItems.qty,
+          storeInventoryId: purchaseRequestItems.storeInventoryId,
+        });
+
+      if (!removedItem) {
+        throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
+      }
+
+      if (removedItem.storeInventoryId != null) {
+        await this.inventoriesService.releaseReservedStock(
+          removedItem.storeInventoryId,
+          removedItem.qty,
         );
       }
 
@@ -202,71 +227,44 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getActive(userId: number) {
-    const [request] = await this.db
-      .select()
-      .from(purchaseRequests)
-      .where(
-        and(
-          eq(purchaseRequests.requesterId, userId),
-          eq(purchaseRequests.status, "new"),
-          gt(purchaseRequests.expiresAt, new Date()),
-        ),
-      )
-      .orderBy(desc(purchaseRequests.updatedAt), desc(purchaseRequests.id))
-      .limit(1);
-
-    if (!request) {
-      return null;
-    }
-
-    const items = await this.db
-      .select()
-      .from(purchaseRequestItems)
-      .where(eq(purchaseRequestItems.purchaseRequestId, request.id));
-
-    return { ...request, items };
+    return (
+      (await this.db.query.purchaseRequests.findFirst({
+        where: (table) =>
+          and(
+            eq(table.requesterId, userId),
+            eq(table.status, "new"),
+            gt(table.expiresAt, new Date()),
+          ),
+        orderBy: (table) => [desc(table.updatedAt), desc(table.id)],
+        with: {
+          items: true,
+        },
+      })) ?? null
+    );
   }
 
-  async getRequesterIdById(purchaseRequestId: number): Promise<number | null> {
-    const [request] = await this.db
-      .select({ requesterId: purchaseRequests.requesterId })
-      .from(purchaseRequests)
-      .where(eq(purchaseRequests.id, purchaseRequestId))
-      .limit(1);
-
-    return request?.requesterId ?? null;
-  }
-
-  async getRequesterIdByItemId(itemId: number): Promise<number | null> {
-    const [item] = await this.db
-      .select({ requesterId: purchaseRequests.requesterId })
-      .from(purchaseRequestItems)
-      .innerJoin(
-        purchaseRequests,
-        eq(purchaseRequestItems.purchaseRequestId, purchaseRequests.id),
-      )
-      .where(eq(purchaseRequestItems.id, itemId))
-      .limit(1);
-
-    return item?.requesterId ?? null;
-  }
-
-  async confirm(userId: number, id: number) {
+  async confirm(user: AuthenticatedUser, id: number) {
     return this.db.transaction(async (tx) => {
       const [request] = await tx
         .select()
         .from(purchaseRequests)
-        .where(
-          and(
-            eq(purchaseRequests.id, id),
-            eq(purchaseRequests.requesterId, userId),
-            eq(purchaseRequests.status, "new"),
-            gt(purchaseRequests.expiresAt, new Date()),
-          ),
-        )
+        .where(eq(purchaseRequests.id, id))
         .limit(1);
 
       if (!request) {
+        throwHttpError(
+          HttpStatus.CONFLICT,
+          "Purchase request is invalid, expired, or already processed",
+        );
+      }
+
+      this.assertCanUpdatePurchaseRequest(user, request.requesterId);
+
+      if (
+        request.status !== "new" ||
+        request.expiresAt == null ||
+        request.expiresAt <= new Date()
+      ) {
         throwHttpError(
           HttpStatus.CONFLICT,
           "Purchase request is invalid, expired, or already processed",
@@ -288,7 +286,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
         .insert(invoices)
         .values({
           storeId: request.storeId!,
-          buyerId: userId,
+          buyerId: user.id,
           purchaseRequestId: request.id,
           invoiceNumber,
           status: "pending",
@@ -317,7 +315,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
           item.storeInventoryId,
           item.qty,
           `invoice:${invoice.id}`,
-          userId,
+          user.id,
         );
       }
 
@@ -330,21 +328,21 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async cancel(userId: number, id: number) {
+  async cancel(user: AuthenticatedUser, id: number) {
     return this.db.transaction(async (tx) => {
       const [request] = await tx
         .select()
         .from(purchaseRequests)
-        .where(
-          and(
-            eq(purchaseRequests.id, id),
-            eq(purchaseRequests.requesterId, userId),
-            eq(purchaseRequests.status, "new"),
-          ),
-        )
+        .where(eq(purchaseRequests.id, id))
         .limit(1);
 
       if (!request) {
+        throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");
+      }
+
+      this.assertCanUpdatePurchaseRequest(user, request.requesterId);
+
+      if (request.status !== "new") {
         throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");
       }
 
@@ -358,13 +356,9 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
 
-        await this.inventoriesService.releaseReservedStockAtomic(
-          tx,
+        await this.inventoriesService.releaseReservedStock(
           item.storeInventoryId,
           item.qty,
-          "cancellation",
-          `purchase_request:${request.id}`,
-          userId,
         );
       }
 
@@ -385,15 +379,11 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     this.isRunningExpiry = true;
 
     try {
-      const expiredRequests = await this.db
-        .select({ id: purchaseRequests.id })
-        .from(purchaseRequests)
-        .where(
-          and(
-            eq(purchaseRequests.status, "new"),
-            lt(purchaseRequests.expiresAt, new Date()),
-          ),
-        );
+      const expiredRequests = await this.db.query.purchaseRequests.findMany({
+        columns: { id: true },
+        where: (table) =>
+          and(eq(table.status, "new"), lt(table.expiresAt, new Date())),
+      });
 
       for (const request of expiredRequests) {
         await this.db.transaction(async (tx) => {
@@ -425,13 +415,9 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
               continue;
             }
 
-            await this.inventoriesService.releaseReservedStockAtomic(
-              tx,
+            await this.inventoriesService.releaseReservedStock(
               item.storeInventoryId,
               item.qty,
-              "reservation_expired",
-              `purchase_request:${activeRequest.id}`,
-              activeRequest.requesterId,
             );
           }
 
@@ -461,5 +447,23 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       .update(purchaseRequests)
       .set({ totalAmount: row?.total ?? 0, updatedAt: new Date() })
       .where(eq(purchaseRequests.id, purchaseRequestId));
+  }
+
+  private assertCanUpdatePurchaseRequest(
+    user: AuthenticatedUser,
+    requesterId: number,
+  ) {
+    const ability = this.caslAbilityFactory.createForUser(user);
+    const canUpdatePurchaseRequest = ability.can(
+      Action.Update,
+      subject("PurchaseRequest", { requesterId }),
+    );
+
+    if (!canUpdatePurchaseRequest) {
+      throwHttpError(
+        HttpStatus.FORBIDDEN,
+        "You do not have permission for this action",
+      );
+    }
   }
 }

@@ -1,4 +1,3 @@
-import { subject } from "@casl/ability";
 import {
   Body,
   Controller,
@@ -8,10 +7,12 @@ import {
   Patch,
   Post,
   Put,
+  Req,
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
-import { Action, CheckPolicies, PoliciesGuard } from "../auth/casl/index.js";
+import type { Request } from "express";
+import type { AuthenticatedUser } from "../auth/interfaces/index.js";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
 import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
 import { CategoriesService } from "./categories.service.js";
@@ -21,7 +22,7 @@ import { UpdateCategoryDto } from "./dto/update-category.dto.js";
 
 @ApiTags("Categories")
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, UserEnrichmentGuard, PoliciesGuard)
+@UseGuards(JwtAuthGuard, UserEnrichmentGuard)
 @Controller("categories")
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
@@ -32,22 +33,19 @@ export class CategoriesController {
   }
 
   @Post()
-  @CheckPolicies((ability) =>
-    ability.can(Action.Create, subject("Category", {})),
-  )
-  create(@Body() dto: CreateCategoryDto) {
-    return this.categoriesService.create(dto);
+  create(@Req() req: Request, @Body() dto: CreateCategoryDto) {
+    const user = req.user as AuthenticatedUser;
+    return this.categoriesService.create(user, dto);
   }
 
   @Patch(":id")
-  @CheckPolicies((ability) =>
-    ability.can(Action.Update, subject("Category", {})),
-  )
   update(
+    @Req() req: Request,
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateCategoryDto,
   ) {
-    return this.categoriesService.update(id, dto);
+    const user = req.user as AuthenticatedUser;
+    return this.categoriesService.update(user, id, dto);
   }
 
   @Get(":id/spec-schema")
@@ -56,13 +54,12 @@ export class CategoriesController {
   }
 
   @Put(":id/spec-schema")
-  @CheckPolicies((ability) =>
-    ability.can(Action.Update, subject("Category", {})),
-  )
   replaceSpecSchema(
+    @Req() req: Request,
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: ReplaceSpecSchemaDto,
   ) {
-    return this.categoriesService.replaceSpecSchema(id, dto);
+    const user = req.user as AuthenticatedUser;
+    return this.categoriesService.replaceSpecSchema(user, id, dto);
   }
 }

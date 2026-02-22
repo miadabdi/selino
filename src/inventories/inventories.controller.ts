@@ -1,4 +1,3 @@
-import { subject } from "@casl/ability";
 import {
   Body,
   Controller,
@@ -12,7 +11,7 @@ import {
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
-import { Action, CheckPolicies, PoliciesGuard } from "../auth/casl/index.js";
+import type { AuthenticatedUser } from "../auth/interfaces/index.js";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
 import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
 import { CreateInventoryDto } from "./dto/create-inventory.dto.js";
@@ -22,38 +21,30 @@ import { InventoriesService } from "./inventories.service.js";
 
 @ApiTags("Store Inventories")
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, UserEnrichmentGuard, PoliciesGuard)
+@UseGuards(JwtAuthGuard, UserEnrichmentGuard)
 @Controller("stores/:storeId/inventory")
 export class InventoriesController {
   constructor(private readonly inventoriesService: InventoriesService) {}
 
   @Post()
-  @CheckPolicies((ability, request) => {
-    const storeId = Number(request.params.storeId);
-    return ability.can(Action.Create, subject("Inventory", { storeId }));
-  })
   create(
     @Param("storeId", ParseIntPipe) storeId: number,
     @Req() req: Request,
     @Body() dto: CreateInventoryDto,
   ) {
-    const user = req.user as { id: number };
-    return this.inventoriesService.create(storeId, user.id, dto);
+    const user = req.user as AuthenticatedUser;
+    return this.inventoriesService.create(storeId, user, dto);
   }
 
   @Patch(":id/restock")
-  @CheckPolicies((ability, request) => {
-    const storeId = Number(request.params.storeId);
-    return ability.can(Action.Update, subject("Inventory", { storeId }));
-  })
   restock(
     @Param("storeId", ParseIntPipe) storeId: number,
     @Param("id", ParseIntPipe) id: number,
     @Req() req: Request,
     @Body() dto: RestockInventoryDto,
   ) {
-    const user = req.user as { id: number };
-    return this.inventoriesService.restock(storeId, id, user.id, dto);
+    const user = req.user as AuthenticatedUser;
+    return this.inventoriesService.restock(storeId, id, user, dto);
   }
 
   @Get()
@@ -62,16 +53,14 @@ export class InventoriesController {
   }
 
   @Patch(":id")
-  @CheckPolicies((ability, request) => {
-    const storeId = Number(request.params.storeId);
-    return ability.can(Action.Update, subject("Inventory", { storeId }));
-  })
   update(
     @Param("storeId", ParseIntPipe) storeId: number,
     @Param("id", ParseIntPipe) id: number,
+    @Req() req: Request,
     @Body() dto: UpdateInventoryDto,
   ) {
-    return this.inventoriesService.update(storeId, id, dto);
+    const user = req.user as AuthenticatedUser;
+    return this.inventoriesService.update(storeId, id, user, dto);
   }
 
   @Get(":id/transactions")

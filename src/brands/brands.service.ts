@@ -1,7 +1,10 @@
+import { subject } from "@casl/ability";
 import { HttpStatus, Inject, Injectable } from "@nestjs/common";
-import { and, asc, eq, isNull, ne } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
+import { Action, CaslAbilityFactory } from "../auth/casl/index.js";
+import type { AuthenticatedUser } from "../auth/interfaces/index.js";
 import { throwHttpError } from "../common/http-error.js";
-import { slugify } from "../common/slug.js";
+import { generateUniqueSlug } from "../common/slug.js";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
 import { brands } from "../database/schema/index.js";
@@ -10,18 +13,33 @@ import { UpdateBrandDto } from "./dto/update-brand.dto.js";
 
 @Injectable()
 export class BrandsService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly caslAbilityFactory: CaslAbilityFactory,
+  ) {}
 
   async list() {
-    return this.db
-      .select()
-      .from(brands)
-      .where(isNull(brands.deletedAt))
-      .orderBy(asc(brands.name));
+    return this.db.query.brands.findMany({
+      where: (table) => isNull(table.deletedAt),
+      orderBy: (table) => [asc(table.name)],
+    });
   }
 
-  async create(dto: CreateBrandDto) {
-    const slug = await this.generateUniqueSlug(dto.name);
+  private assertBrandCasl(user: AuthenticatedUser, action: Action) {
+    const ability = this.caslAbilityFactory.createForUser(user);
+    const allowed = ability.can(action, subject("Brand", {}));
+
+    if (!allowed) {
+      throwHttpError(
+        HttpStatus.FORBIDDEN,
+        "You do not have permission for this action",
+      );
+    }
+  }
+
+  async create(user: AuthenticatedUser, dto: CreateBrandDto) {
+    this.assertBrandCasl(user, Action.Create);
+    const slug = generateUniqueSlug(dto.name);
     const [row] = await this.db
       .insert(brands)
       .values({ name: dto.name, slug })
@@ -29,28 +47,19 @@ export class BrandsService {
     return row;
   }
 
-  async update(id: number, dto: UpdateBrandDto) {
-    const [existing] = await this.db
-      .select({ id: brands.id })
-      .from(brands)
-      .where(and(eq(brands.id, id), isNull(brands.deletedAt)))
-      .limit(1);
+  async update(id: number, user: AuthenticatedUser, dto: UpdateBrandDto) {
+    this.assertBrandCasl(user, Action.Update);
 
-    if (!existing) {
+    const current = await this.db.query.brands.findFirst({
+      where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
+    });
+
+    if (!current) {
       throwHttpError(HttpStatus.NOT_FOUND, "Brand not found");
     }
 
-    const current = await this.db
-      .select()
-      .from(brands)
-      .where(eq(brands.id, id))
-      .limit(1);
-
-    const name = dto.name ?? current[0].name;
-    const slug =
-      dto.name != null
-        ? await this.generateUniqueSlug(dto.name, id)
-        : current[0].slug;
+    const name = dto.name ?? current.name;
+    const slug = dto.name != null ? generateUniqueSlug(dto.name) : current.slug;
 
     const [row] = await this.db
       .update(brands)
@@ -59,33 +68,5 @@ export class BrandsService {
       .returning();
 
     return row;
-  }
-
-  private async generateUniqueSlug(
-    name: string,
-    excludeBrandId?: number,
-  ): Promise<string> {
-    const base = slugify(name);
-    let slug = base;
-    let counter = 2;
-
-    while (true) {
-      const [existing] = await this.db
-        .select({ id: brands.id })
-        .from(brands)
-        .where(
-          excludeBrandId != null
-            ? and(eq(brands.slug, slug), ne(brands.id, excludeBrandId))
-            : eq(brands.slug, slug),
-        )
-        .limit(1);
-
-      if (!existing) {
-        return slug;
-      }
-
-      slug = `${base}-${counter}`;
-      counter += 1;
-    }
   }
 }

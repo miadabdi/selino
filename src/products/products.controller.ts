@@ -1,4 +1,3 @@
-import { subject } from "@casl/ability";
 import {
   Body,
   Controller,
@@ -17,7 +16,7 @@ import {
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
-import { Action, CheckPolicies, PoliciesGuard } from "../auth/casl/index.js";
+import type { AuthenticatedUser } from "../auth/interfaces/index.js";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
 import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
 import { imageFileFilter } from "../files/image-file-filter.js";
@@ -34,7 +33,7 @@ const MAX_PRODUCT_PICTURE_COUNT = 15;
 
 @ApiTags("Products")
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, UserEnrichmentGuard, PoliciesGuard)
+@UseGuards(JwtAuthGuard, UserEnrichmentGuard)
 @Controller("products")
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
@@ -53,16 +52,13 @@ export class ProductsController {
   )
   @ApiConsumes("multipart/form-data")
   @ApiBody({ type: CreateProductBody })
-  @CheckPolicies((ability) =>
-    ability.can(Action.Create, subject("Product", {})),
-  )
   create(
     @Req() req: Request,
     @Body() dto: CreateProductDto,
     @UploadedFiles() pictures?: Express.Multer.File[],
   ) {
-    const user = req.user as { id: number };
-    return this.productsService.create(dto, user.id, pictures ?? []);
+    const user = req.user as AuthenticatedUser;
+    return this.productsService.create(dto, user, pictures ?? []);
   }
 
   @Get(":id")
@@ -79,17 +75,14 @@ export class ProductsController {
   )
   @ApiConsumes("multipart/form-data")
   @ApiBody({ type: UpdateProductBody })
-  @CheckPolicies((ability) =>
-    ability.can(Action.Update, subject("Product", {})),
-  )
   update(
     @Req() req: Request,
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateProductDto,
     @UploadedFiles() pictures?: Express.Multer.File[],
   ) {
-    const user = req.user as { id: number };
-    return this.productsService.update(id, dto, user.id, pictures ?? []);
+    const user = req.user as AuthenticatedUser;
+    return this.productsService.update(id, dto, user, pictures ?? []);
   }
 
   @Delete(":id")

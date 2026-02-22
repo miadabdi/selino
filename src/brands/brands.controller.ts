@@ -1,4 +1,3 @@
-import { subject } from "@casl/ability";
 import {
   Body,
   Controller,
@@ -7,19 +6,22 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
-import { Action, CheckPolicies, PoliciesGuard } from "../auth/casl/index.js";
+import type { Request } from "express";
+import { GetUser } from "../auth/decorators/get-user.decorator.js";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
 import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
+import type { AuthenticatedUser } from "../auth/interfaces/index.js";
 import { BrandsService } from "./brands.service.js";
 import { CreateBrandDto } from "./dto/create-brand.dto.js";
 import { UpdateBrandDto } from "./dto/update-brand.dto.js";
 
 @ApiTags("Brands")
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, UserEnrichmentGuard, PoliciesGuard)
+@UseGuards(JwtAuthGuard, UserEnrichmentGuard)
 @Controller("brands")
 export class BrandsController {
   constructor(private readonly brandsService: BrandsService) {}
@@ -30,13 +32,17 @@ export class BrandsController {
   }
 
   @Post()
-  @CheckPolicies((ability) => ability.can(Action.Create, subject("Brand", {})))
-  create(@Body() dto: CreateBrandDto) {
-    return this.brandsService.create(dto);
+  create(@Req() req: Request, @Body() dto: CreateBrandDto) {
+    const user = req.user as AuthenticatedUser;
+    return this.brandsService.create(user, dto);
   }
 
   @Patch(":id")
-  update(@Param("id", ParseIntPipe) id: number, @Body() dto: UpdateBrandDto) {
-    return this.brandsService.update(id, dto);
+  update(
+    @Param("id", ParseIntPipe) id: number,
+    @GetUser() user: AuthenticatedUser,
+    @Body() dto: UpdateBrandDto,
+  ) {
+    return this.brandsService.update(id, user, dto);
   }
 }

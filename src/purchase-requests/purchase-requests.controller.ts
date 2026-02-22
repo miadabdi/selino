@@ -11,16 +11,15 @@ import {
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
-import { CheckPolicies, PoliciesGuard } from "../auth/casl/index.js";
+import type { AuthenticatedUser } from "../auth/interfaces/index.js";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
 import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
 import { AddPurchaseRequestItemDto } from "./dto/add-purchase-request-item.dto.js";
-import { PurchaseRequestPolicies } from "./purchase-requests.policies.js";
 import { PurchaseRequestsService } from "./purchase-requests.service.js";
 
 @ApiTags("Purchase Requests")
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, UserEnrichmentGuard, PoliciesGuard)
+@UseGuards(JwtAuthGuard, UserEnrichmentGuard)
 @Controller("purchase-requests")
 export class PurchaseRequestsController {
   constructor(
@@ -34,13 +33,12 @@ export class PurchaseRequestsController {
   }
 
   @Delete("items/:itemId")
-  @CheckPolicies(PurchaseRequestPolicies.updateByItemId)
   removeItem(
     @Req() req: Request,
     @Param("itemId", ParseIntPipe) itemId: number,
   ) {
-    const user = req.user as { id: number };
-    return this.purchaseRequestsService.removeItem(user.id, itemId);
+    const user = req.user as AuthenticatedUser;
+    return this.purchaseRequestsService.removeItem(user, itemId);
   }
 
   @Get("active")
@@ -50,16 +48,14 @@ export class PurchaseRequestsController {
   }
 
   @Post(":id/confirm")
-  @CheckPolicies(PurchaseRequestPolicies.updateByRequestId)
   confirm(@Req() req: Request, @Param("id", ParseIntPipe) id: number) {
-    const user = req.user as { id: number };
-    return this.purchaseRequestsService.confirm(user.id, id);
+    const user = req.user as AuthenticatedUser;
+    return this.purchaseRequestsService.confirm(user, id);
   }
 
   @Post(":id/cancel")
-  @CheckPolicies(PurchaseRequestPolicies.updateByRequestId)
   cancel(@Req() req: Request, @Param("id", ParseIntPipe) id: number) {
-    const user = req.user as { id: number };
-    return this.purchaseRequestsService.cancel(user.id, id);
+    const user = req.user as AuthenticatedUser;
+    return this.purchaseRequestsService.cancel(user, id);
   }
 }

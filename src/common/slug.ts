@@ -11,3 +11,7 @@ export function slugify(input: string): string {
 
   return normalized || "item";
 }
+
+export function generateUniqueSlug(input: string): string {
+  return `${slugify(input)}-${Date.now() % 1000}`;
+}

@@ -227,6 +227,30 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     return { ...request, items };
   }
 
+  async getRequesterIdById(purchaseRequestId: number): Promise<number | null> {
+    const [request] = await this.db
+      .select({ requesterId: purchaseRequests.requesterId })
+      .from(purchaseRequests)
+      .where(eq(purchaseRequests.id, purchaseRequestId))
+      .limit(1);
+
+    return request?.requesterId ?? null;
+  }
+
+  async getRequesterIdByItemId(itemId: number): Promise<number | null> {
+    const [item] = await this.db
+      .select({ requesterId: purchaseRequests.requesterId })
+      .from(purchaseRequestItems)
+      .innerJoin(
+        purchaseRequests,
+        eq(purchaseRequestItems.purchaseRequestId, purchaseRequests.id),
+      )
+      .where(eq(purchaseRequestItems.id, itemId))
+      .limit(1);
+
+    return item?.requesterId ?? null;
+  }
+
   async confirm(userId: number, id: number) {
     return this.db.transaction(async (tx) => {
       const [request] = await tx

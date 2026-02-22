@@ -1,13 +1,16 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { IsIn, IsInt } from "class-validator";
-import { storeMemberRoleEnum } from "../../database/schema/store-members.schema.js";
+import {
+  StoreMemberRole,
+  storeMemberRoleEnum,
+} from "../../database/schema/store-members.schema.js";
 
 export class AddStoreMemberDto {
   @ApiProperty()
   @IsInt()
   userId!: number;
 
-  @ApiProperty({ enum: storeMemberRoleEnum.enumValues })
+  @ApiProperty({ enum: StoreMemberRole })
   @IsIn(storeMemberRoleEnum.enumValues)
-  role!: "owner" | "manager" | "seller" | "gatherer";
+  role!: StoreMemberRole;
 }

@@ -4,7 +4,11 @@ import { throwHttpError } from "../common/http-error.js";
 import { slugify } from "../common/slug.js";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
-import { storeMembers, stores } from "../database/schema/index.js";
+import {
+  StoreMemberRole,
+  storeMembers,
+  stores,
+} from "../database/schema/index.js";
 import { FilesService } from "../files/files.service.js";
 import { AddStoreMemberDto } from "./dto/add-store-member.dto.js";
 import { CreateStoreDto } from "./dto/create-store.dto.js";
@@ -50,7 +54,7 @@ export class StoresService {
       await tx.insert(storeMembers).values({
         storeId: store.id,
         userId,
-        role: "owner",
+        role: StoreMemberRole.Owner,
       });
 
       return store;
@@ -69,6 +73,22 @@ export class StoresService {
     }
 
     return store;
+  }
+
+  async getMemberRole(userId: number, storeId: number) {
+    const [member] = await this.db
+      .select({ role: storeMembers.role })
+      .from(storeMembers)
+      .where(
+        and(
+          eq(storeMembers.userId, userId),
+          eq(storeMembers.storeId, storeId),
+          eq(storeMembers.isActive, true),
+        ),
+      )
+      .limit(1);
+
+    return member?.role ?? null;
   }
 
   async update(id: number, dto: UpdateStoreDto, logo?: Express.Multer.File) {

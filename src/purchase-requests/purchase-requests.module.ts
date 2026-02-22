@@ -7,5 +7,6 @@ import { PurchaseRequestsService } from "./purchase-requests.service.js";
   imports: [InventoriesModule],
   controllers: [PurchaseRequestsController],
   providers: [PurchaseRequestsService],
+  exports: [PurchaseRequestsService],
 })
 export class PurchaseRequestsModule {}

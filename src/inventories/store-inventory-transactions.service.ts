@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { StockReason } from "../common/stock-reasons";
+import { TXContext } from "../database/database.types";
 import { StoreInventoryTransactionsRepository } from "./store-inventory-transactions.repository";
 
 @Injectable()
@@ -8,7 +9,7 @@ export class StoreInventoryTransactionsService {
     private readonly storeInventoryTransactionsRepository: StoreInventoryTransactionsRepository,
   ) {}
 
-  async listByInventoryId(inventoryId: number) {
+  listByInventoryId(inventoryId: number) {
     return this.storeInventoryTransactionsRepository.listByInventoryId(
       inventoryId,
     );
@@ -31,12 +32,12 @@ export class StoreInventoryTransactionsService {
   }
 
   async createWithTx(
-    tx: any,
     inventoryId: number,
     change: number,
     reason: StockReason,
     reference: string,
     changedBy: number,
+    txContext: TXContext,
   ) {
     await this.storeInventoryTransactionsRepository.create(
       inventoryId,
@@ -44,7 +45,7 @@ export class StoreInventoryTransactionsService {
       reason,
       reference,
       changedBy,
-      tx,
+      txContext,
     );
   }
 }

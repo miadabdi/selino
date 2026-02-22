@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { and, eq } from "drizzle-orm";
 import { AbstractRepository } from "../common/abstract.repository";
 import { DATABASE } from "../database/database.constants";
-import type { Database, DBContext } from "../database/database.types";
+import type { Database, TXContext } from "../database/database.types";
 import {
   refreshTokens,
   type NewRefreshToken,
@@ -17,17 +17,20 @@ export class RefreshTokenRepository extends AbstractRepository {
 
   async create(
     data: NewRefreshToken,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<RefreshToken> {
-    const [created] = await db.insert(refreshTokens).values(data).returning();
+    const [created] = await txContext
+      .insert(refreshTokens)
+      .values(data)
+      .returning();
     return created;
   }
 
   findByTokenHash(
     tokenHash: string,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<RefreshToken | undefined> {
-    return db.query.refreshTokens.findFirst({
+    return txContext.query.refreshTokens.findFirst({
       where: (table) => eq(table.tokenHash, tokenHash),
     });
   }
@@ -35,9 +38,9 @@ export class RefreshTokenRepository extends AbstractRepository {
   async markRevokedForRotation(
     tokenId: number,
     replacedBy: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<void> {
-    await db
+    await txContext
       .update(refreshTokens)
       .set({
         isRevoked: true,
@@ -52,9 +55,9 @@ export class RefreshTokenRepository extends AbstractRepository {
   async revokeByHash(
     tokenHash: string,
     reason: NonNullable<NewRefreshToken["revokedReason"]>,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<void> {
-    await db
+    await txContext
       .update(refreshTokens)
       .set({
         isRevoked: true,
@@ -72,9 +75,9 @@ export class RefreshTokenRepository extends AbstractRepository {
   async revokeAllForUser(
     userId: number,
     reason: NonNullable<NewRefreshToken["revokedReason"]>,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<void> {
-    await db
+    await txContext
       .update(refreshTokens)
       .set({
         isRevoked: true,

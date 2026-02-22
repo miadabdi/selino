@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { TXContext } from "../database/database.types";
 import { NotificationChannel } from "../notification/notification.enums";
 import { NotificationService } from "../notification/notification.service";
 import { OtpRepository } from "./otp.repository";
@@ -34,40 +35,66 @@ export class OtpService {
   /**
    * Create and send a new OTP for the given phone number.
    */
-  async sendOtp(phone: string, userId?: number): Promise<void> {
+  async sendOtp(
+    phone: string,
+    userId?: number,
+    txContext: TXContext = this.otpRepository.db,
+  ): Promise<void> {
     const code = this.generateCode();
     const expiresAt = new Date(Date.now() + this.otpTtlMinutes * 60 * 1000);
 
-    await this.otpRepository.createPhoneOtp(phone, code, expiresAt, userId);
+    await this.otpRepository.createPhoneOtp(
+      phone,
+      code,
+      expiresAt,
+      userId,
+      txContext,
+    );
 
-    await this.notificationService.send({
-      channel: NotificationChannel.SMS,
-      destination: phone,
-      type: "otp",
-      body: `Your Selino verification code is: ${code}`,
-      userId: userId ?? undefined,
-      metadata: { code },
-    });
+    await this.notificationService.send(
+      {
+        channel: NotificationChannel.SMS,
+        destination: phone,
+        type: "otp",
+        body: `Your Selino verification code is: ${code}`,
+        userId: userId ?? undefined,
+        metadata: { code },
+      },
+      txContext,
+    );
   }
 
   /**
    * Create and send a new OTP for the given email address.
    */
-  async sendEmailOtp(email: string, userId?: number): Promise<void> {
+  async sendEmailOtp(
+    email: string,
+    userId?: number,
+    txContext: TXContext = this.otpRepository.db,
+  ): Promise<void> {
     const code = this.generateCode();
     const expiresAt = new Date(Date.now() + this.otpTtlMinutes * 60 * 1000);
 
-    await this.otpRepository.createEmailOtp(email, code, expiresAt, userId);
+    await this.otpRepository.createEmailOtp(
+      email,
+      code,
+      expiresAt,
+      userId,
+      txContext,
+    );
 
-    await this.notificationService.send({
-      channel: NotificationChannel.EMAIL,
-      destination: email,
-      type: "otp",
-      title: "Email Verification Code",
-      body: `Your Selino verification code is: ${code}`,
-      userId: userId ?? undefined,
-      metadata: { code },
-    });
+    await this.notificationService.send(
+      {
+        channel: NotificationChannel.EMAIL,
+        destination: email,
+        type: "otp",
+        title: "Email Verification Code",
+        body: `Your Selino verification code is: ${code}`,
+        userId: userId ?? undefined,
+        metadata: { code },
+      },
+      txContext,
+    );
   }
 
   /**

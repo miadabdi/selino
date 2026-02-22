@@ -72,20 +72,23 @@ export class UsersService {
 
     const updateData: Partial<typeof users.$inferInsert> = { ...data };
 
+    if (currentUser.email == updateData.email) {
+      // Email is the same as current, no change needed
+      delete updateData.email; // Remove email from update data
+    } else if (updateData.email) {
+      const existingUser = await this.findByEmail(updateData.email);
+      if (existingUser && existingUser.id !== currentUser.id) {
+        throw new ConflictException("Email already in use");
+      }
+      updateData.isEmailVerified = false;
+    }
+
+    let newProfilePictureId: number | undefined;
     // Process profile picture if provided
     if (profilePicture) {
       const processedBuffer = await this.processProfileImage(
         profilePicture.buffer,
       );
-
-      // Delete old profile picture if exists
-      if (currentUser.profilePictureId != null) {
-        await this.filesService
-          .softDelete(currentUser.profilePictureId)
-          .catch(() => {
-            // Old file cleanup is best-effort
-          });
-      }
 
       const fileRecord = await this.filesService.uploadFromBuffer(
         "profileMedia",
@@ -95,27 +98,33 @@ export class UsersService {
         id,
       );
 
-      updateData.profilePictureId = fileRecord.id;
+      newProfilePictureId = fileRecord.id;
     }
 
-    if (currentUser.email == updateData.email) {
-      // Email is the same as current, no change needed
-      delete updateData.email; // Remove email from update data
-    }
-
-    // If email is being changed, mark it as unverified
-    if (updateData.email && updateData.email !== currentUser.email) {
-      const existingUser = await this.findByEmail(updateData.email);
-      if (existingUser && existingUser.id !== currentUser.id) {
-        throw new ConflictException("Email already in use");
+    return this.usersRepository.transaction(async (tx) => {
+      if (!updateData.isEmailVerified && updateData.email) {
+        // If email changed and is not verified, send verification code
+        await this.authService.sendEmailOtp(
+          updateData.email,
+          currentUser.id,
+          tx,
+        );
       }
 
-      updateData.isEmailVerified = false;
-      // If email changed, send verification code
-      await this.authService.sendEmailOtp(updateData.email, currentUser.id);
-    }
+      if (profilePicture) {
+        if (currentUser.profilePictureId != null) {
+          await this.filesService
+            .softDelete(currentUser.profilePictureId, tx)
+            .catch(() => {
+              // Old file cleanup is best-effort
+            });
+        }
 
-    return this.usersRepository.updateById(id, updateData);
+        updateData.profilePictureId = newProfilePictureId;
+      }
+
+      return this.usersRepository.updateById(id, updateData, tx);
+    });
   }
 
   /**

@@ -95,7 +95,7 @@ export class ProductsService {
     );
     this.validateSpecs(category.specSchema ?? {}, dto.specs);
 
-    const created = await this.productsRepository.createProduct({
+    const createData = {
       categoryId: dto.categoryId,
       brandId: dto.brandId ?? null,
       title: dto.title,
@@ -110,44 +110,51 @@ export class ProductsService {
       status: dto.status ?? "draft",
       isActive: dto.isActive ?? true,
       defaultImageFileId: dto.defaultImageFileId ?? null,
-    });
+    };
 
-    if (pictures.length > 0) {
-      const uploads = await Promise.all(
-        pictures.map((picture) =>
-          this.filesService.uploadFromBuffer(
-            "productMedia",
-            picture.buffer,
-            picture.originalname,
-            picture.mimetype,
-            user.id,
-          ),
-        ),
-      );
-
-      await this.productsRepository.transaction(async (tx) => {
-        for (const [index, uploaded] of uploads.entries()) {
-          await this.productsRepository.createProductImage(
-            {
-              productId: created.id,
-              fileId: uploaded.id,
-              position: index,
-            },
-            tx,
-          );
-        }
-
-        if (created.defaultImageFileId == null && uploads.length > 0) {
-          await this.productsRepository.setDefaultImageFileId(
-            created.id,
-            uploads[0].id,
-            tx,
-          );
-        }
-      });
+    if (pictures.length === 0) {
+      return this.productsRepository.createProduct(createData);
     }
 
-    return created;
+    const uploads = await Promise.all(
+      pictures.map((picture) =>
+        this.filesService.uploadFromBuffer(
+          "productMedia",
+          picture.buffer,
+          picture.originalname,
+          picture.mimetype,
+          user.id,
+        ),
+      ),
+    );
+
+    return this.productsRepository.transaction(async (tx) => {
+      const created = await this.productsRepository.createProduct(
+        createData,
+        tx,
+      );
+
+      for (const [index, uploaded] of uploads.entries()) {
+        await this.productsRepository.createProductImage(
+          {
+            productId: created.id,
+            fileId: uploaded.id,
+            position: index,
+          },
+          tx,
+        );
+      }
+
+      if (created.defaultImageFileId == null) {
+        await this.productsRepository.setDefaultImageFileId(
+          created.id,
+          uploads[0].id,
+          tx,
+        );
+      }
+
+      return created;
+    });
   }
 
   async getById(id: number) {
@@ -175,51 +182,63 @@ export class ProductsService {
       this.validateSpecs(category.specSchema ?? {}, dto.specs);
     }
 
-    const updated = await this.productsRepository.updateProductById(id, dto);
+    if (pictures.length === 0) {
+      const updated = await this.productsRepository.updateProductById(id, dto);
 
-    if (!updated) {
-      throwHttpError(HttpStatus.NOT_FOUND, "Product not found");
+      if (!updated) {
+        throwHttpError(HttpStatus.NOT_FOUND, "Product not found");
+      }
+
+      return updated;
     }
 
-    if (pictures.length > 0) {
-      const uploads = await Promise.all(
-        pictures.map((picture) =>
-          this.filesService.uploadFromBuffer(
-            "productMedia",
-            picture.buffer,
-            picture.originalname,
-            picture.mimetype,
-            user.id,
-          ),
+    const uploads = await Promise.all(
+      pictures.map((picture) =>
+        this.filesService.uploadFromBuffer(
+          "productMedia",
+          picture.buffer,
+          picture.originalname,
+          picture.mimetype,
+          user.id,
         ),
+      ),
+    );
+
+    const startPosition =
+      (await this.productsRepository.getMaxImagePosition(id)) + 1;
+
+    return this.productsRepository.transaction(async (tx) => {
+      const updated = await this.productsRepository.updateProductById(
+        id,
+        dto,
+        tx,
       );
 
-      const startPosition =
-        (await this.productsRepository.getMaxImagePosition(id)) + 1;
+      if (!updated) {
+        throwHttpError(HttpStatus.NOT_FOUND, "Product not found");
+      }
 
-      await this.productsRepository.transaction(async (tx) => {
-        for (const [index, uploaded] of uploads.entries()) {
-          await this.productsRepository.createProductImage(
-            {
-              productId: id,
-              fileId: uploaded.id,
-              position: startPosition + index,
-            },
-            tx,
-          );
-        }
+      for (const [index, uploaded] of uploads.entries()) {
+        await this.productsRepository.createProductImage(
+          {
+            productId: id,
+            fileId: uploaded.id,
+            position: startPosition + index,
+          },
+          tx,
+        );
+      }
 
-        if (updated.defaultImageFileId == null && uploads.length > 0) {
-          await this.productsRepository.setDefaultImageFileId(
-            id,
-            uploads[0].id,
-            tx,
-          );
-        }
-      });
-    }
+      if (updated.defaultImageFileId == null) {
+        await this.productsRepository.setDefaultImageFileId(
+          id,
+          uploads[0].id,
+          tx,
+        );
+      }
 
-    return updated;
+      return updated;
+    });
   }
 
   async softDelete(id: number) {
@@ -269,16 +288,20 @@ export class ProductsService {
       }
     }
 
-    await this.productsRepository.transaction(async (tx) => {
-      for (const [index, imageId] of dto.imageIds.entries()) {
-        await this.productsRepository.updateImagePosition(
-          id,
-          imageId,
-          index,
-          tx,
-        );
-      }
-    });
+    if (dto.imageIds.length === 1) {
+      await this.productsRepository.updateImagePosition(id, dto.imageIds[0], 0);
+    } else if (dto.imageIds.length > 1) {
+      await this.productsRepository.transaction(async (tx) => {
+        for (const [index, imageId] of dto.imageIds.entries()) {
+          await this.productsRepository.updateImagePosition(
+            id,
+            imageId,
+            index,
+            tx,
+          );
+        }
+      });
+    }
 
     return this.productsRepository.listImagesByProductId(id);
   }

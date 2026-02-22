@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { and, eq, gt } from "drizzle-orm";
 import { AbstractRepository } from "../common/abstract.repository";
 import { DATABASE } from "../database/database.constants";
-import type { Database, DBContext } from "../database/database.types";
+import type { Database, TXContext } from "../database/database.types";
 import { authOtps, type AuthOtp } from "../database/schema/index";
 
 @Injectable()
@@ -16,9 +16,9 @@ export class OtpRepository extends AbstractRepository {
     code: string,
     expiresAt: Date,
     userId?: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<void> {
-    await db.insert(authOtps).values({
+    await txContext.insert(authOtps).values({
       phone,
       email: null,
       code,
@@ -33,9 +33,9 @@ export class OtpRepository extends AbstractRepository {
     code: string,
     expiresAt: Date,
     userId?: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<void> {
-    await db.insert(authOtps).values({
+    await txContext.insert(authOtps).values({
       phone: null,
       email,
       code,
@@ -49,9 +49,9 @@ export class OtpRepository extends AbstractRepository {
     phone: string,
     code: string,
     now: Date,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<AuthOtp | undefined> {
-    return db.query.authOtps.findFirst({
+    return txContext.query.authOtps.findFirst({
       where: (table) =>
         and(
           eq(table.phone, phone),
@@ -66,9 +66,9 @@ export class OtpRepository extends AbstractRepository {
     email: string,
     code: string,
     now: Date,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<AuthOtp | undefined> {
-    return db.query.authOtps.findFirst({
+    return txContext.query.authOtps.findFirst({
       where: (table) =>
         and(
           eq(table.email, email),
@@ -79,8 +79,11 @@ export class OtpRepository extends AbstractRepository {
     });
   }
 
-  async markConsumed(otpId: number, db: DBContext = this.db): Promise<void> {
-    await db
+  async markConsumed(
+    otpId: number,
+    txContext: TXContext = this.db,
+  ): Promise<void> {
+    await txContext
       .update(authOtps)
       .set({ consumed: true })
       .where(eq(authOtps.id, otpId));

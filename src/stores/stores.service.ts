@@ -88,14 +88,9 @@ export class StoresService {
 
     let logoFileId = current.logoFileId;
 
+    let newLogoId: number | undefined;
     if (logo) {
-      if (current.logoFileId != null) {
-        await this.filesService.softDelete(current.logoFileId).catch(() => {
-          // best effort old logo cleanup
-        });
-      }
-
-      logoFileId = (
+      newLogoId = (
         await this.filesService.uploadFromBuffer(
           "productMedia",
           logo.buffer,
@@ -105,13 +100,28 @@ export class StoresService {
       ).id;
     }
 
-    return this.storesRepository.updateStoreById(
-      id,
-      dto,
-      name,
-      slug,
-      logoFileId,
-    );
+    return this.storesRepository.transaction(async (tx) => {
+      if (logo) {
+        if (current.logoFileId != null) {
+          await this.filesService
+            .softDelete(current.logoFileId, tx)
+            .catch(() => {
+              // best effort old logo cleanup
+            });
+        }
+
+        logoFileId = newLogoId!;
+      }
+
+      return this.storesRepository.updateStoreById(
+        id,
+        dto,
+        name,
+        slug,
+        logoFileId,
+        tx,
+      );
+    });
   }
 
   async softDelete(id: number) {

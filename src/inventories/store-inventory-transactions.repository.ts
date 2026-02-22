@@ -3,7 +3,7 @@ import { asc, eq } from "drizzle-orm";
 import { AbstractRepository } from "../common/abstract.repository";
 import type { StockReason } from "../common/stock-reasons";
 import { DATABASE } from "../database/database.constants";
-import type { Database, DBContext } from "../database/database.types";
+import type { Database, TXContext } from "../database/database.types";
 import { storeInventoryTransactions } from "../database/schema/index";
 
 @Injectable()
@@ -12,8 +12,8 @@ export class StoreInventoryTransactionsRepository extends AbstractRepository {
     super(db);
   }
 
-  listByInventoryId(inventoryId: number, db: DBContext = this.db) {
-    return db.query.storeInventoryTransactions.findMany({
+  listByInventoryId(inventoryId: number, txContext: TXContext = this.db) {
+    return txContext.query.storeInventoryTransactions.findMany({
       where: (table) => eq(table.storeInventoryId, inventoryId),
       orderBy: (table) => [asc(table.id)],
     });
@@ -25,9 +25,9 @@ export class StoreInventoryTransactionsRepository extends AbstractRepository {
     reason: StockReason,
     reference: string,
     changedBy: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    await db.insert(storeInventoryTransactions).values({
+    await txContext.insert(storeInventoryTransactions).values({
       storeInventoryId: inventoryId,
       change,
       reason,

@@ -1,9 +1,9 @@
-import type { Database, DBContext } from "../database/database.types";
+import type { Database, TXContext } from "../database/database.types";
 
 export abstract class AbstractRepository {
-  protected constructor(protected readonly db: Database) {}
+  protected constructor(readonly db: Database) {}
 
-  async transaction<T>(callback: (tx: DBContext) => Promise<T>) {
+  async transaction<T>(callback: (txContext: TXContext) => Promise<T>) {
     return this.db.transaction(async (tx) => callback(tx));
   }
 }

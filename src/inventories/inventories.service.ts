@@ -7,14 +7,14 @@ import { CreateInventoryDto } from "./dto/create-inventory.dto";
 import { RestockInventoryDto } from "./dto/restock-inventory.dto";
 import { UpdateInventoryDto } from "./dto/update-inventory.dto";
 import { InventoriesRepository } from "./inventories.repository";
-import { StoreInventoryTransactionsService } from "./store-inventory-transactions.service";
+import { StoreInventoryTransactionsRepository } from "./store-inventory-transactions.repository";
 
 @Injectable()
 export class InventoriesService {
   constructor(
     private readonly inventoriesRepository: InventoriesRepository,
     private readonly caslAbilityFactory: CaslAbilityFactory,
-    private readonly storeInventoryTransactionsService: StoreInventoryTransactionsService,
+    private readonly storeInventoryTransactionsRepository: StoreInventoryTransactionsRepository,
   ) {}
 
   private assertInventoryCasl(
@@ -42,23 +42,31 @@ export class InventoriesService {
     await this.assertStoreExists(storeId);
     await this.assertProductExists(dto.productId);
 
-    const created = await this.inventoriesRepository.create(
-      storeId,
-      user.id,
-      dto,
-    );
+    const initialStock = dto.stock ?? 0;
 
-    if ((dto.stock ?? 0) > 0) {
-      await this.storeInventoryTransactionsService.create(
+    if (initialStock <= 0) {
+      return this.inventoriesRepository.create(storeId, user.id, dto);
+    }
+
+    return this.inventoriesRepository.transaction(async (tx) => {
+      const created = await this.inventoriesRepository.create(
+        storeId,
+        user.id,
+        dto,
+        tx,
+      );
+
+      await this.storeInventoryTransactionsRepository.create(
         created.id,
-        dto.stock ?? 0,
+        initialStock,
         "restock",
         `inventory:${created.id}:create`,
         user.id,
+        tx,
       );
-    }
 
-    return created;
+      return created;
+    });
   }
 
   async restock(
@@ -70,21 +78,25 @@ export class InventoriesService {
     this.assertInventoryCasl(user, Action.Update, storeId);
     await this.assertInventory(storeId, inventoryId);
 
-    const updated = await this.inventoriesRepository.restock(
-      storeId,
-      inventoryId,
-      dto.qty,
-    );
+    return this.inventoriesRepository.transaction(async (tx) => {
+      const updated = await this.inventoriesRepository.restock(
+        storeId,
+        inventoryId,
+        dto.qty,
+        tx,
+      );
 
-    await this.storeInventoryTransactionsService.create(
-      inventoryId,
-      dto.qty,
-      dto.reason,
-      `inventory:${inventoryId}:restock`,
-      user.id,
-    );
+      await this.storeInventoryTransactionsRepository.create(
+        inventoryId,
+        dto.qty,
+        dto.reason,
+        `inventory:${inventoryId}:restock`,
+        user.id,
+        tx,
+      );
 
-    return updated;
+      return updated;
+    });
   }
 
   async list(storeId: number) {
@@ -116,7 +128,7 @@ export class InventoriesService {
   async listTransactions(storeId: number, inventoryId: number) {
     await this.assertInventory(storeId, inventoryId);
 
-    return this.storeInventoryTransactionsService.listByInventoryId(
+    return this.storeInventoryTransactionsRepository.listByInventoryId(
       inventoryId,
     );
   }
@@ -148,32 +160,33 @@ export class InventoriesService {
   }
 
   async consumeReservedStockAtomic(
-    tx: any,
     inventoryId: number,
     qty: number,
     reference: string,
     changedBy: number,
   ) {
-    const result = await this.inventoriesRepository.consumeReservedStock(
-      inventoryId,
-      qty,
-      tx,
-    );
+    return this.inventoriesRepository.transaction(async (tx) => {
+      const result = await this.inventoriesRepository.consumeReservedStock(
+        inventoryId,
+        qty,
+        tx,
+      );
 
-    if (result.length === 0) {
-      throwHttpError(HttpStatus.CONFLICT, "Insufficient stock for sale");
-    }
+      if (result.length === 0) {
+        throwHttpError(HttpStatus.CONFLICT, "Insufficient stock for sale");
+      }
 
-    await this.storeInventoryTransactionsService.createWithTx(
-      tx,
-      inventoryId,
-      -qty,
-      "sale",
-      reference,
-      changedBy,
-    );
+      await this.storeInventoryTransactionsRepository.create(
+        inventoryId,
+        -qty,
+        "sale",
+        reference,
+        changedBy,
+        tx,
+      );
 
-    return result[0];
+      return result[0];
+    });
   }
 
   async assertInventory(storeId: number, inventoryId: number) {

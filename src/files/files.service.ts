@@ -8,6 +8,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { extname } from "path";
 import { v4 as uuidv4 } from "uuid";
+import { TXContext } from "../database/database.types";
 import { type FileRecord, type NewFileRecord } from "../database/schema/index";
 import {
   STORAGE_BUCKETS,
@@ -82,8 +83,6 @@ export class FilesService {
       uploadedBy: uploadedBy ?? null,
     };
 
-    const fileRecord = await this.filesRepository.create(newFile);
-
     // Generate presigned PUT URL
     const uploadUrl = await this.storageProvider.getPresignedPutUrl(
       bucketConfig.bucketName,
@@ -92,6 +91,8 @@ export class FilesService {
       this.presignedUrlTtlSeconds,
       bucketConfig.maxFileSizeBytes,
     );
+
+    const fileRecord = await this.filesRepository.create(newFile);
 
     const expiresAt = new Date(
       Date.now() + this.presignedUrlTtlSeconds * 1000,
@@ -244,7 +245,7 @@ export class FilesService {
   /**
    * Soft-deletes the DB row and removes the object from storage.
    */
-  async softDelete(fileId: number): Promise<void> {
+  async softDelete(fileId: number, tx?: TXContext): Promise<void> {
     const file = await this.findActiveById(fileId);
     if (!file) {
       throw new NotFoundException(`File with ID ${fileId} not found`);
@@ -261,7 +262,7 @@ export class FilesService {
     }
 
     // Soft-delete the DB row
-    await this.filesRepository.softDeleteById(fileId);
+    await this.filesRepository.softDeleteById(fileId, tx);
   }
 
   /**

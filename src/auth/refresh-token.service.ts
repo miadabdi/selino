@@ -93,17 +93,27 @@ export class RefreshTokenService {
       Date.now() + this.refreshTtlDays * 24 * 60 * 60 * 1000,
     );
 
-    const newRecord = await this.refreshTokenRepository.create({
-      userId: existing.userId,
-      tokenHash: newTokenHash,
-      expiresAt,
-      rotationCount: existing.rotationCount + 1,
-    });
+    const newRecord = await this.refreshTokenRepository.transaction(
+      async (tx) => {
+        const created = await this.refreshTokenRepository.create(
+          {
+            userId: existing.userId,
+            tokenHash: newTokenHash,
+            expiresAt,
+            rotationCount: existing.rotationCount + 1,
+          },
+          tx,
+        );
 
-    // Revoke old token and link to replacement
-    await this.refreshTokenRepository.markRevokedForRotation(
-      existing.id,
-      newRecord.id,
+        // Revoke old token and link to replacement
+        await this.refreshTokenRepository.markRevokedForRotation(
+          existing.id,
+          created.id,
+          tx,
+        );
+
+        return created;
+      },
     );
 
     return { newRawToken, tokenRecord: newRecord };

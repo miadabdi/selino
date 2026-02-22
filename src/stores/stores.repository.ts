@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { and, eq, isNull } from "drizzle-orm";
 import { AbstractRepository } from "../common/abstract.repository";
 import { DATABASE } from "../database/database.constants";
-import type { Database, DBContext } from "../database/database.types";
+import type { Database, TXContext } from "../database/database.types";
 import {
   storeMembers,
   stores,
@@ -19,23 +19,26 @@ export class StoresRepository extends AbstractRepository {
     super(db);
   }
 
-  async createStore(data: NewStore, db: DBContext = this.db): Promise<Store> {
-    const [created] = await db.insert(stores).values(data).returning();
+  async createStore(
+    data: NewStore,
+    txContext: TXContext = this.db,
+  ): Promise<Store> {
+    const [created] = await txContext.insert(stores).values(data).returning();
     return created;
   }
 
   async createStoreMember(
     data: NewStoreMember,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<void> {
-    await db.insert(storeMembers).values(data);
+    await txContext.insert(storeMembers).values(data);
   }
 
   findActiveStoreById(
     id: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<Store | undefined> {
-    return db.query.stores.findFirst({
+    return txContext.query.stores.findFirst({
       where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
     });
   }
@@ -43,9 +46,9 @@ export class StoresRepository extends AbstractRepository {
   findActiveMemberRole(
     userId: number,
     storeId: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<{ role: StoreMemberRole } | undefined> {
-    return db.query.storeMembers.findFirst({
+    return txContext.query.storeMembers.findFirst({
       columns: { role: true },
       where: (table) =>
         and(
@@ -62,9 +65,9 @@ export class StoresRepository extends AbstractRepository {
     name: string,
     slug: string | null,
     logoFileId: number | null,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<Store> {
-    const [updated] = await db
+    const [updated] = await txContext
       .update(stores)
       .set({
         name,
@@ -81,9 +84,9 @@ export class StoresRepository extends AbstractRepository {
 
   async softDeleteStoreById(
     id: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<void> {
-    await db
+    await txContext
       .update(stores)
       .set({
         deletedAt: new Date(),
@@ -92,8 +95,12 @@ export class StoresRepository extends AbstractRepository {
       .where(eq(stores.id, id));
   }
 
-  findStoreMember(storeId: number, userId: number, db: DBContext = this.db) {
-    return db.query.storeMembers.findFirst({
+  findStoreMember(
+    storeId: number,
+    userId: number,
+    txContext: TXContext = this.db,
+  ) {
+    return txContext.query.storeMembers.findFirst({
       where: (table) =>
         and(eq(table.storeId, storeId), eq(table.userId, userId)),
     });
@@ -103,9 +110,9 @@ export class StoresRepository extends AbstractRepository {
     storeId: number,
     userId: number,
     role: StoreMemberRole,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    const [member] = await db
+    const [member] = await txContext
       .insert(storeMembers)
       .values({
         storeId,
@@ -117,8 +124,12 @@ export class StoresRepository extends AbstractRepository {
     return member;
   }
 
-  async removeMember(storeId: number, userId: number, db: DBContext = this.db) {
-    return db
+  async removeMember(
+    storeId: number,
+    userId: number,
+    txContext: TXContext = this.db,
+  ) {
+    return txContext
       .delete(storeMembers)
       .where(
         and(eq(storeMembers.storeId, storeId), eq(storeMembers.userId, userId)),

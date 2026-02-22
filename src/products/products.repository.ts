@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { AbstractRepository } from "../common/abstract.repository";
 import { DATABASE } from "../database/database.constants";
-import type { Database, DBContext } from "../database/database.types";
+import type { Database, TXContext } from "../database/database.types";
 import {
   productImages,
   products,
@@ -17,20 +17,20 @@ export class ProductsRepository extends AbstractRepository {
     super(db);
   }
 
-  list(whereClauses: SQL<unknown>[], db: DBContext = this.db) {
-    return db.query.products.findMany({
+  list(whereClauses: SQL<unknown>[], txContext: TXContext = this.db) {
+    return txContext.query.products.findMany({
       where: and(...whereClauses),
       orderBy: (table) => [asc(table.id)],
     });
   }
 
-  async createProduct(data: NewProduct, db: DBContext = this.db) {
-    const [created] = await db.insert(products).values(data).returning();
+  async createProduct(data: NewProduct, txContext: TXContext = this.db) {
+    const [created] = await txContext.insert(products).values(data).returning();
     return created;
   }
 
-  async findActiveByIdWithImages(id: number, db: DBContext = this.db) {
-    return db.query.products.findFirst({
+  async findActiveByIdWithImages(id: number, txContext: TXContext = this.db) {
+    return txContext.query.products.findFirst({
       where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
       with: {
         images: {
@@ -43,9 +43,9 @@ export class ProductsRepository extends AbstractRepository {
   async updateProductById(
     id: number,
     data: UpdateProductDto,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    const [updated] = await db
+    const [updated] = await txContext
       .update(products)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(products.id, id))
@@ -54,20 +54,26 @@ export class ProductsRepository extends AbstractRepository {
     return updated;
   }
 
-  async softDeleteById(id: number, db: DBContext = this.db) {
-    await db
+  async softDeleteById(id: number, txContext: TXContext = this.db) {
+    await txContext
       .update(products)
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(eq(products.id, id));
   }
 
-  async createProductImage(data: NewProductImage, db: DBContext = this.db) {
-    const [image] = await db.insert(productImages).values(data).returning();
+  async createProductImage(
+    data: NewProductImage,
+    txContext: TXContext = this.db,
+  ) {
+    const [image] = await txContext
+      .insert(productImages)
+      .values(data)
+      .returning();
     return image;
   }
 
-  async getMaxImagePosition(productId: number, db: DBContext = this.db) {
-    const [maxPositionRow] = await db
+  async getMaxImagePosition(productId: number, txContext: TXContext = this.db) {
+    const [maxPositionRow] = await txContext
       .select({
         max: sql<number>`coalesce(max(${productImages.position}), -1)::int`,
       })
@@ -80,16 +86,16 @@ export class ProductsRepository extends AbstractRepository {
   async setDefaultImageFileId(
     productId: number,
     fileId: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    await db
+    await txContext
       .update(products)
       .set({ defaultImageFileId: fileId, updatedAt: new Date() })
       .where(eq(products.id, productId));
   }
 
-  async listImageIds(productId: number, db: DBContext = this.db) {
-    return db.query.productImages.findMany({
+  async listImageIds(productId: number, txContext: TXContext = this.db) {
+    return txContext.query.productImages.findMany({
       columns: { id: true },
       where: (table) => eq(table.productId, productId),
     });
@@ -99,9 +105,9 @@ export class ProductsRepository extends AbstractRepository {
     productId: number,
     imageId: number,
     position: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    await db
+    await txContext
       .update(productImages)
       .set({ position })
       .where(
@@ -112,8 +118,11 @@ export class ProductsRepository extends AbstractRepository {
       );
   }
 
-  async listImagesByProductId(productId: number, db: DBContext = this.db) {
-    return db.query.productImages.findMany({
+  async listImagesByProductId(
+    productId: number,
+    txContext: TXContext = this.db,
+  ) {
+    return txContext.query.productImages.findMany({
       where: (table) => eq(table.productId, productId),
       orderBy: (table) => [asc(table.position), asc(table.id)],
     });

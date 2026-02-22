@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { TXContext } from "../database/database.types";
 import type { SendNotificationOptions } from "./interfaces/send-notification.interface";
 import { DeliveryStatus } from "./notification.enums";
 import { NotificationProducer } from "./notification.producer";
@@ -20,27 +21,31 @@ export class NotificationService {
    * - Publishes a job to RabbitMQ; the consumer handles the actual dispatch
    *   via the channel handler (strategy pattern).
    */
-  async send(options: SendNotificationOptions): Promise<void> {
+  async send(
+    options: SendNotificationOptions,
+    txContext: TXContext = this.notificationRepository.db,
+  ): Promise<void> {
     const { channel, destination, body, title, type, userId, metadata } =
       options;
 
-    let notificationId: number | undefined;
-    if (userId) {
-      notificationId = await this.notificationRepository.createNotification(
-        userId,
-        type,
-        title,
-        body,
-      );
-    }
-
     let deliveryId: number | undefined;
-    if (notificationId) {
+
+    if (userId) {
+      const createdNotificationId =
+        await this.notificationRepository.createNotification(
+          userId,
+          type,
+          title,
+          body,
+          txContext,
+        );
+
       deliveryId = await this.notificationRepository.createDelivery(
-        notificationId,
+        createdNotificationId,
         channel,
         destination,
         DeliveryStatus.PENDING,
+        txContext,
       );
     }
 

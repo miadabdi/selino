@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { AbstractRepository } from "../common/abstract.repository";
 import { DATABASE } from "../database/database.constants";
-import type { Database, DBContext } from "../database/database.types";
+import type { Database, TXContext } from "../database/database.types";
 import { storeInventories } from "../database/schema/index";
 import type { CreateInventoryDto } from "./dto/create-inventory.dto";
 import type { UpdateInventoryDto } from "./dto/update-inventory.dto";
@@ -17,9 +17,9 @@ export class InventoriesRepository extends AbstractRepository {
     storeId: number,
     userId: number,
     dto: CreateInventoryDto,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    const [created] = await db
+    const [created] = await txContext
       .insert(storeInventories)
       .values({
         storeId,
@@ -41,9 +41,9 @@ export class InventoriesRepository extends AbstractRepository {
     storeId: number,
     inventoryId: number,
     qty: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    const [updated] = await db
+    const [updated] = await txContext
       .update(storeInventories)
       .set({
         stock: sql`${storeInventories.stock} + ${qty}`,
@@ -60,8 +60,8 @@ export class InventoriesRepository extends AbstractRepository {
     return updated;
   }
 
-  listByStoreId(storeId: number, db: DBContext = this.db) {
-    return db.query.storeInventories.findMany({
+  listByStoreId(storeId: number, txContext: TXContext = this.db) {
+    return txContext.query.storeInventories.findMany({
       where: (table) => eq(table.storeId, storeId),
       orderBy: (table) => [asc(table.id)],
     });
@@ -71,9 +71,9 @@ export class InventoriesRepository extends AbstractRepository {
     storeId: number,
     inventoryId: number,
     dto: UpdateInventoryDto,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    const [updated] = await db
+    const [updated] = await txContext
       .update(storeInventories)
       .set({
         price: dto.price,
@@ -97,9 +97,9 @@ export class InventoriesRepository extends AbstractRepository {
   async reserveStock(
     inventoryId: number,
     qty: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    return db
+    return txContext
       .update(storeInventories)
       .set({
         reservedStock: sql`${storeInventories.reservedStock} + ${qty}`,
@@ -117,9 +117,9 @@ export class InventoriesRepository extends AbstractRepository {
   async releaseReservedStock(
     inventoryId: number,
     qty: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    return db
+    return txContext
       .update(storeInventories)
       .set({
         reservedStock: sql`${storeInventories.reservedStock} - ${qty}`,
@@ -137,9 +137,9 @@ export class InventoriesRepository extends AbstractRepository {
   async consumeReservedStock(
     inventoryId: number,
     qty: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    return db
+    return txContext
       .update(storeInventories)
       .set({
         stock: sql`${storeInventories.stock} - ${qty}`,
@@ -159,29 +159,29 @@ export class InventoriesRepository extends AbstractRepository {
   findInventoryByStoreAndId(
     storeId: number,
     inventoryId: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    return db.query.storeInventories.findFirst({
+    return txContext.query.storeInventories.findFirst({
       where: (table) =>
         and(eq(table.id, inventoryId), eq(table.storeId, storeId)),
     });
   }
 
-  findInventoryById(inventoryId: number, db: DBContext = this.db) {
-    return db.query.storeInventories.findFirst({
+  findInventoryById(inventoryId: number, txContext: TXContext = this.db) {
+    return txContext.query.storeInventories.findFirst({
       where: (table) => eq(table.id, inventoryId),
     });
   }
 
-  findActiveStoreById(storeId: number, db: DBContext = this.db) {
-    return db.query.stores.findFirst({
+  findActiveStoreById(storeId: number, txContext: TXContext = this.db) {
+    return txContext.query.stores.findFirst({
       columns: { id: true },
       where: (table) => and(eq(table.id, storeId), isNull(table.deletedAt)),
     });
   }
 
-  findActiveProductById(productId: number, db: DBContext = this.db) {
-    return db.query.products.findFirst({
+  findActiveProductById(productId: number, txContext: TXContext = this.db) {
+    return txContext.query.products.findFirst({
       columns: { id: true },
       where: (table) => and(eq(table.id, productId), isNull(table.deletedAt)),
     });

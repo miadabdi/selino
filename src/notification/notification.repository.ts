@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { eq } from "drizzle-orm";
 import { AbstractRepository } from "../common/abstract.repository";
 import { DATABASE } from "../database/database.constants";
-import type { Database, DBContext } from "../database/database.types";
+import type { Database, TXContext } from "../database/database.types";
 import {
   notificationDeliveries,
   notifications,
@@ -20,9 +20,9 @@ export class NotificationRepository extends AbstractRepository {
     type: string,
     title: string | undefined,
     body: string,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<number> {
-    const [notification] = await db
+    const [notification] = await txContext
       .insert(notifications)
       .values({ userId, type, title, body })
       .returning();
@@ -35,9 +35,9 @@ export class NotificationRepository extends AbstractRepository {
     channel: NotificationChannel,
     destination: string,
     status: DeliveryStatus,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<number> {
-    const [delivery] = await db
+    const [delivery] = await txContext
       .insert(notificationDeliveries)
       .values({
         notificationId,
@@ -54,9 +54,9 @@ export class NotificationRepository extends AbstractRepository {
     deliveryId: number,
     status: DeliveryStatus,
     error: string | null,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<void> {
-    await db
+    await txContext
       .update(notificationDeliveries)
       .set({
         status,

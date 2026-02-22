@@ -7,4 +7,4 @@ export type TransactionType = Parameters<
   Parameters<Database["transaction"]>[0]
 >[0];
 
-export type DBContext = Database | TransactionType;
+export type TXContext = Database | TransactionType;

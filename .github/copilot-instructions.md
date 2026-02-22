@@ -116,3 +116,4 @@ nest generate service feature-name
 - always let drizzle handle migrations
   - use `db:generate` script to generate migrations from changes to schema
   - do not use `db:migrate`, that actually migrates the db and it should be done manually
+- use drizzleorm's query engine db.query.Find when possible and if not possible fall back to custom query

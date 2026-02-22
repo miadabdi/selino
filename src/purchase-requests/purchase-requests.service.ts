@@ -174,9 +174,14 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
     }
 
-    this.assertPurchaseRequestCasl(user, item.requesterId, Action.Update);
+    const request = item.purchaseRequest;
+    if (!request) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
+    }
 
-    if (item.purchaseRequestStatus !== "new") {
+    this.assertPurchaseRequestCasl(user, request.requesterId, Action.Update);
+
+    if (request.status !== "new") {
       throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
     }
 
@@ -185,7 +190,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
         await this.purchaseRequestsRepository.deleteItemForOpenRequest(
           item.id,
           item.purchaseRequestId,
-          item.requesterId,
+          request.requesterId,
           tx,
         );
 

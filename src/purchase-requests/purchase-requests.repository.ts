@@ -26,21 +26,27 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     now: Date,
     txContext: TXContext = this.db,
   ) {
-    return txContext
-      .select({ qty: purchaseRequestItems.qty })
-      .from(purchaseRequestItems)
-      .innerJoin(
-        purchaseRequests,
-        eq(purchaseRequestItems.purchaseRequestId, purchaseRequests.id),
-      )
-      .where(
-        and(
-          eq(purchaseRequests.requesterId, userId),
-          eq(purchaseRequests.status, "new"),
-          gt(purchaseRequests.expiresAt, now),
-          eq(purchaseRequestItems.storeInventoryId, storeInventoryId),
-        ),
-      );
+    return txContext.query.purchaseRequests
+      .findMany({
+        columns: {
+          id: true,
+        },
+        where: (table) =>
+          and(
+            eq(table.requesterId, userId),
+            eq(table.status, "new"),
+            gt(table.expiresAt, now),
+          ),
+        with: {
+          items: {
+            columns: {
+              qty: true,
+            },
+            where: (table) => eq(table.storeInventoryId, storeInventoryId),
+          },
+        },
+      })
+      .then((rows) => rows.flatMap((row) => row.items));
   }
 
   async findLatestActiveRequestForUserStore(
@@ -49,21 +55,16 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     now: Date,
     txContext: TXContext = this.db,
   ) {
-    const [row] = await txContext
-      .select()
-      .from(purchaseRequests)
-      .where(
+    return txContext.query.purchaseRequests.findFirst({
+      where: (table) =>
         and(
-          eq(purchaseRequests.requesterId, userId),
-          eq(purchaseRequests.storeId, storeId),
-          eq(purchaseRequests.status, "new"),
-          gt(purchaseRequests.expiresAt, now),
+          eq(table.requesterId, userId),
+          eq(table.storeId, storeId),
+          eq(table.status, "new"),
+          gt(table.expiresAt, now),
         ),
-      )
-      .orderBy(desc(purchaseRequests.id))
-      .limit(1);
-
-    return row;
+      orderBy: (table) => [desc(table.id)],
+    });
   }
 
   async createRequest(
@@ -103,24 +104,23 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     itemId: number,
     txContext: TXContext = this.db,
   ) {
-    const [item] = await txContext
-      .select({
-        id: purchaseRequestItems.id,
-        qty: purchaseRequestItems.qty,
-        storeInventoryId: purchaseRequestItems.storeInventoryId,
-        purchaseRequestId: purchaseRequestItems.purchaseRequestId,
-        requesterId: purchaseRequests.requesterId,
-        purchaseRequestStatus: purchaseRequests.status,
-      })
-      .from(purchaseRequestItems)
-      .innerJoin(
-        purchaseRequests,
-        eq(purchaseRequestItems.purchaseRequestId, purchaseRequests.id),
-      )
-      .where(eq(purchaseRequestItems.id, itemId))
-      .limit(1);
-
-    return item;
+    return txContext.query.purchaseRequestItems.findFirst({
+      columns: {
+        id: true,
+        qty: true,
+        storeInventoryId: true,
+        purchaseRequestId: true,
+      },
+      where: (table) => eq(table.id, itemId),
+      with: {
+        purchaseRequest: {
+          columns: {
+            requesterId: true,
+            status: true,
+          },
+        },
+      },
+    });
   }
 
   async deleteItemForOpenRequest(
@@ -198,23 +198,18 @@ export class PurchaseRequestsRepository extends AbstractRepository {
   }
 
   async findById(id: number, txContext: TXContext = this.db) {
-    const [row] = await txContext
-      .select()
-      .from(purchaseRequests)
-      .where(eq(purchaseRequests.id, id))
-      .limit(1);
-
-    return row;
+    return txContext.query.purchaseRequests.findFirst({
+      where: (table) => eq(table.id, id),
+    });
   }
 
   listItemsByRequestId(
     purchaseRequestId: number,
     txContext: TXContext = this.db,
   ) {
-    return txContext
-      .select()
-      .from(purchaseRequestItems)
-      .where(eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId));
+    return txContext.query.purchaseRequestItems.findMany({
+      where: (table) => eq(table.purchaseRequestId, purchaseRequestId),
+    });
   }
 
   async createInvoice(data: NewInvoice, txContext: TXContext = this.db) {
@@ -240,15 +235,12 @@ export class PurchaseRequestsRepository extends AbstractRepository {
   }
 
   findExpiredOpenRequestIds(now: Date, txContext: TXContext = this.db) {
-    return txContext
-      .select({ id: purchaseRequests.id })
-      .from(purchaseRequests)
-      .where(
-        and(
-          eq(purchaseRequests.status, "new"),
-          lt(purchaseRequests.expiresAt, now),
-        ),
-      );
+    return txContext.query.purchaseRequests.findMany({
+      columns: {
+        id: true,
+      },
+      where: (table) => and(eq(table.status, "new"), lt(table.expiresAt, now)),
+    });
   }
 
   async findExpiredOpenById(
@@ -274,13 +266,14 @@ export class PurchaseRequestsRepository extends AbstractRepository {
       return row;
     }
 
-    const [row] = await txContext
-      .select()
-      .from(purchaseRequests)
-      .where(whereClause)
-      .limit(1);
-
-    return row;
+    return txContext.query.purchaseRequests.findFirst({
+      where: (table) =>
+        and(
+          eq(table.id, requestId),
+          eq(table.status, "new"),
+          lt(table.expiresAt, now),
+        ),
+    });
   }
 
   async setRequestExpired(

@@ -21,7 +21,7 @@ import {
 import { GetUser } from "../auth/decorators/index.js";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
 import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
-import { type User } from "../database/schema/index.js";
+import type { AuthenticatedUser } from "../auth/interfaces/index.js";
 import { imageFileFilter } from "../files/index.js";
 import { UpdateProfileBody, UpdateUserDto, UserResponse } from "./dto/index.js";
 import { UsersService } from "./users.service.js";
@@ -60,7 +60,7 @@ export class UsersController {
   })
   @ApiUnauthorizedResponse({ description: "Not authenticated" })
   async updateProfile(
-    @GetUser() user: User,
+    @GetUser() user: AuthenticatedUser,
     @Body() dto: UpdateUserDto,
     @UploadedFile() profilePicture?: Express.Multer.File,
   ): Promise<UserResponse> {

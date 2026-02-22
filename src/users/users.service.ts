@@ -2,6 +2,7 @@ import { ConflictException, Inject, Injectable } from "@nestjs/common";
 import { and, eq, isNull } from "drizzle-orm";
 import sharp from "sharp";
 import { AuthService } from "../auth/auth.service.js";
+import { AuthenticatedUser } from "../auth/interfaces/authenticated-user.interface.js";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
 import { users, type NewUser, type User } from "../database/schema/index.js";
@@ -27,6 +28,20 @@ export class UsersService {
       .limit(1);
 
     return result[0];
+  }
+
+  async findAuthenticatedById(
+    id: number,
+  ): Promise<AuthenticatedUser | undefined> {
+    return this.db.query.users.findFirst({
+      where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
+      with: {
+        storeMemberships: {
+          where: (membership) =>
+            and(eq(membership.isActive, true), eq(membership.isActive, true)),
+        },
+      },
+    });
   }
 
   async findByPhone(phone: string): Promise<User | undefined> {

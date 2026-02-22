@@ -1,8 +1,9 @@
-import { Module } from "@nestjs/common";
+import { Global, Module } from "@nestjs/common";
 import { FilesModule } from "../files/files.module.js";
 import { UsersController } from "./users.controller.js";
 import { UsersService } from "./users.service.js";
 
+@Global()
 @Module({
   imports: [FilesModule],
   controllers: [UsersController],

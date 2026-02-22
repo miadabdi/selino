@@ -18,8 +18,7 @@ export class UserEnrichmentGuard implements CanActivate {
       throw new UnauthorizedException("User not authenticated");
     }
 
-    // Fetch full user from database
-    const fullUser = await this.usersService.findById(jwtUser.id);
+    const fullUser = await this.usersService.findAuthenticatedById(jwtUser.id);
 
     if (!fullUser) {
       throw new UnauthorizedException("User not found");

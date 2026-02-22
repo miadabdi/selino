@@ -1,3 +1,4 @@
+import { subject } from "@casl/ability";
 import {
   Body,
   Controller,
@@ -10,7 +11,9 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { Action, CheckPolicies, PoliciesGuard } from "../auth/casl/index.js";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
+import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
 import { CategoriesService } from "./categories.service.js";
 import { CreateCategoryDto } from "./dto/create-category.dto.js";
 import { ReplaceSpecSchemaDto } from "./dto/replace-spec-schema.dto.js";
@@ -18,7 +21,7 @@ import { UpdateCategoryDto } from "./dto/update-category.dto.js";
 
 @ApiTags("Categories")
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, UserEnrichmentGuard, PoliciesGuard)
 @Controller("categories")
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
@@ -29,11 +32,17 @@ export class CategoriesController {
   }
 
   @Post()
+  @CheckPolicies((ability) =>
+    ability.can(Action.Create, subject("Category", {})),
+  )
   create(@Body() dto: CreateCategoryDto) {
     return this.categoriesService.create(dto);
   }
 
   @Patch(":id")
+  @CheckPolicies((ability) =>
+    ability.can(Action.Update, subject("Category", {})),
+  )
   update(
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateCategoryDto,
@@ -47,6 +56,9 @@ export class CategoriesController {
   }
 
   @Put(":id/spec-schema")
+  @CheckPolicies((ability) =>
+    ability.can(Action.Update, subject("Category", {})),
+  )
   replaceSpecSchema(
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: ReplaceSpecSchemaDto,

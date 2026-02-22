@@ -6,6 +6,8 @@ import { OtpModule } from "../otp/otp.module.js";
 import { UsersModule } from "../users/users.module.js";
 import { AuthController } from "./auth.controller.js";
 import { AuthService } from "./auth.service.js";
+import { CaslAbilityFactory } from "./casl/casl-ability.factory.js";
+import { PoliciesGuard } from "./casl/policies.guard.js";
 import { UserEnrichmentGuard } from "./guards/user-enrichment.guard.js";
 import { RefreshTokenService } from "./refresh-token.service.js";
 import { GoogleStrategy } from "./strategies/google.strategy.js";
@@ -35,10 +37,18 @@ import { JwtStrategy } from "./strategies/jwt.strategy.js";
   providers: [
     AuthService,
     RefreshTokenService,
+    CaslAbilityFactory,
+    PoliciesGuard,
     JwtStrategy,
     GoogleStrategy,
     UserEnrichmentGuard,
   ],
-  exports: [AuthService, RefreshTokenService],
+  exports: [
+    AuthService,
+    RefreshTokenService,
+    CaslAbilityFactory,
+    PoliciesGuard,
+    UserEnrichmentGuard,
+  ],
 })
 export class AuthModule {}

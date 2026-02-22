@@ -1,10 +1,13 @@
+import { subject } from "@casl/ability";
 import { HttpStatus, Inject, Injectable } from "@nestjs/common";
 import { and, asc, eq, isNull, sql, SQL } from "drizzle-orm";
+import { Action, CaslAbilityFactory } from "../auth/casl/index.js";
+import type { AuthenticatedUser } from "../auth/interfaces/index.js";
+import { CategoriesService } from "../categories/categories.service.js";
 import { throwHttpError } from "../common/http-error.js";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
 import {
-  categories,
   productImages,
   products,
   type CategorySpecSchema,
@@ -20,7 +23,21 @@ export class ProductsService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly filesService: FilesService,
+    private readonly categoriesService: CategoriesService,
+    private readonly caslAbilityFactory: CaslAbilityFactory,
   ) {}
+
+  private assertProductCasl(user: AuthenticatedUser, action: Action) {
+    const ability = this.caslAbilityFactory.createForUser(user);
+    const allowed = ability.can(action, subject("Product", {}));
+
+    if (!allowed) {
+      throwHttpError(
+        HttpStatus.FORBIDDEN,
+        "You do not have permission for this action",
+      );
+    }
+  }
 
   async list(query: Record<string, unknown>) {
     const whereClauses: SQL<unknown>[] = [isNull(products.deletedAt)];
@@ -57,26 +74,33 @@ export class ProductsService {
         );
       }
 
-      if (typedCondition.eq != null) {
+      if (
+        typedCondition.eq != null &&
+        (typeof typedCondition.eq === "string" ||
+          typeof typedCondition.eq === "number" ||
+          typeof typedCondition.eq === "boolean")
+      ) {
         whereClauses.push(
           sql`${products.specs} ->> ${field} = ${String(typedCondition.eq)}`,
         );
       }
     }
 
-    return this.db
-      .select()
-      .from(products)
-      .where(and(...whereClauses))
-      .orderBy(asc(products.id));
+    return this.db.query.products.findMany({
+      where: and(...whereClauses),
+      orderBy: (table) => [asc(table.id)],
+    });
   }
 
   async create(
     dto: CreateProductDto,
-    userId: number,
+    user: AuthenticatedUser,
     pictures: Express.Multer.File[] = [],
   ) {
-    const category = await this.getCategory(dto.categoryId);
+    this.assertProductCasl(user, Action.Create);
+    const category = await this.categoriesService.findActiveByIdAssert(
+      dto.categoryId,
+    );
     this.validateSpecs(category.specSchema ?? {}, dto.specs);
 
     const [created] = await this.db
@@ -107,7 +131,7 @@ export class ProductsService {
             picture.buffer,
             picture.originalname,
             picture.mimetype,
-            userId,
+            user.id,
           ),
         ),
       );
@@ -134,36 +158,34 @@ export class ProductsService {
   }
 
   async getById(id: number) {
-    const [product] = await this.db
-      .select()
-      .from(products)
-      .where(and(eq(products.id, id), isNull(products.deletedAt)))
-      .limit(1);
+    const product = await this.db.query.products.findFirst({
+      where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
+      with: {
+        images: {
+          orderBy: (table) => [asc(table.position), asc(table.id)],
+        },
+      },
+    });
 
     if (!product) {
       throwHttpError(HttpStatus.NOT_FOUND, "Product not found");
     }
-
-    const images = await this.db
-      .select()
-      .from(productImages)
-      .where(eq(productImages.productId, id))
-      .orderBy(asc(productImages.position), asc(productImages.id));
-
-    return { ...product, images };
+    return product;
   }
 
   async update(
     id: number,
     dto: UpdateProductDto,
-    userId: number,
+    user: AuthenticatedUser,
     pictures: Express.Multer.File[] = [],
   ) {
+    this.assertProductCasl(user, Action.Update);
     const current = await this.getById(id);
     const categoryId = dto.categoryId ?? current.categoryId;
 
     if (dto.specs != null) {
-      const category = await this.getCategory(categoryId);
+      const category =
+        await this.categoriesService.findActiveByIdAssert(categoryId);
       this.validateSpecs(category.specSchema ?? {}, dto.specs);
     }
 
@@ -197,7 +219,7 @@ export class ProductsService {
             picture.buffer,
             picture.originalname,
             picture.mimetype,
-            userId,
+            user.id,
           ),
         ),
       );
@@ -263,10 +285,10 @@ export class ProductsService {
   async reorderImages(id: number, dto: ReorderProductImagesDto) {
     await this.getById(id);
 
-    const existing = await this.db
-      .select({ id: productImages.id })
-      .from(productImages)
-      .where(eq(productImages.productId, id));
+    const existing = await this.db.query.productImages.findMany({
+      columns: { id: true },
+      where: (table) => eq(table.productId, id),
+    });
 
     const existingIds = new Set(existing.map((row) => row.id));
 
@@ -299,29 +321,10 @@ export class ProductsService {
       }
     });
 
-    return this.db
-      .select()
-      .from(productImages)
-      .where(eq(productImages.productId, id))
-      .orderBy(asc(productImages.position), asc(productImages.id));
-  }
-
-  private async getCategory(id: number) {
-    const [category] = await this.db
-      .select()
-      .from(categories)
-      .where(and(eq(categories.id, id), isNull(categories.deletedAt)))
-      .limit(1);
-
-    if (!category) {
-      throwHttpError(
-        HttpStatus.BAD_REQUEST,
-        "Category not found",
-        "categoryId",
-      );
-    }
-
-    return category;
+    return this.db.query.productImages.findMany({
+      where: (table) => eq(table.productId, id),
+      orderBy: (table) => [asc(table.position), asc(table.id)],
+    });
   }
 
   private validateSpecs(

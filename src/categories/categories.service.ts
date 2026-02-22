@@ -1,7 +1,10 @@
+import { subject } from "@casl/ability";
 import { HttpStatus, Inject, Injectable } from "@nestjs/common";
-import { and, asc, eq, isNull, ne } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
+import { Action, CaslAbilityFactory } from "../auth/casl/index.js";
+import type { AuthenticatedUser } from "../auth/interfaces/index.js";
 import { throwHttpError } from "../common/http-error.js";
-import { slugify } from "../common/slug.js";
+import { generateUniqueSlug } from "../common/slug.js";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
 import {
@@ -15,14 +18,28 @@ import { UpdateCategoryDto } from "./dto/update-category.dto.js";
 
 @Injectable()
 export class CategoriesService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly caslAbilityFactory: CaslAbilityFactory,
+  ) {}
+
+  private assertCategoryCasl(user: AuthenticatedUser, action: Action) {
+    const ability = this.caslAbilityFactory.createForUser(user);
+    const allowed = ability.can(action, subject("Category", {}));
+
+    if (!allowed) {
+      throwHttpError(
+        HttpStatus.FORBIDDEN,
+        "You do not have permission for this action",
+      );
+    }
+  }
 
   async listHierarchy() {
-    const rows = await this.db
-      .select()
-      .from(categories)
-      .where(isNull(categories.deletedAt))
-      .orderBy(asc(categories.position), asc(categories.id));
+    const rows = await this.db.query.categories.findMany({
+      where: (table) => isNull(table.deletedAt),
+      orderBy: (table) => [asc(table.position), asc(table.id)],
+    });
 
     const byParent = new Map<number | null, Category[]>();
     for (const row of rows) {
@@ -43,8 +60,9 @@ export class CategoriesService {
     return makeTree(null);
   }
 
-  async create(dto: CreateCategoryDto) {
-    const slug = await this.generateUniqueSlug(dto.name);
+  async create(user: AuthenticatedUser, dto: CreateCategoryDto) {
+    this.assertCategoryCasl(user, Action.Create);
+    const slug = generateUniqueSlug(dto.name);
 
     const [row] = await this.db
       .insert(categories)
@@ -63,14 +81,12 @@ export class CategoriesService {
     return row;
   }
 
-  async update(id: number, dto: UpdateCategoryDto) {
+  async update(user: AuthenticatedUser, id: number, dto: UpdateCategoryDto) {
+    this.assertCategoryCasl(user, Action.Update);
     const current = await this.getById(id);
 
     const name = dto.name ?? current.name;
-    const slug =
-      dto.name != null
-        ? await this.generateUniqueSlug(dto.name, id)
-        : current.slug;
+    const slug = dto.name != null ? generateUniqueSlug(dto.name) : current.slug;
 
     const [updated] = await this.db
       .update(categories)
@@ -96,7 +112,12 @@ export class CategoriesService {
     return category.specSchema ?? {};
   }
 
-  async replaceSpecSchema(id: number, dto: ReplaceSpecSchemaDto) {
+  async replaceSpecSchema(
+    user: AuthenticatedUser,
+    id: number,
+    dto: ReplaceSpecSchemaDto,
+  ) {
+    this.assertCategoryCasl(user, Action.Update);
     await this.getById(id);
 
     const [updated] = await this.db
@@ -108,12 +129,18 @@ export class CategoriesService {
     return updated.specSchema ?? {};
   }
 
+  async findActiveByIdAssert(id: number): Promise<Category> {
+    const row = await this.findActiveById(id);
+
+    if (!row) {
+      throwHttpError(HttpStatus.BAD_REQUEST, "Category not found");
+    }
+
+    return row;
+  }
+
   async getById(id: number): Promise<Category> {
-    const [row] = await this.db
-      .select()
-      .from(categories)
-      .where(and(eq(categories.id, id), isNull(categories.deletedAt)))
-      .limit(1);
+    const row = await this.findActiveById(id);
 
     if (!row) {
       throwHttpError(HttpStatus.NOT_FOUND, "Category not found");
@@ -122,34 +149,9 @@ export class CategoriesService {
     return row;
   }
 
-  private async generateUniqueSlug(
-    name: string,
-    excludeCategoryId?: number,
-  ): Promise<string> {
-    const base = slugify(name);
-    let slug = base;
-    let counter = 2;
-
-    while (true) {
-      const [existing] = await this.db
-        .select({ id: categories.id })
-        .from(categories)
-        .where(
-          excludeCategoryId != null
-            ? and(
-                eq(categories.slug, slug),
-                ne(categories.id, excludeCategoryId),
-              )
-            : eq(categories.slug, slug),
-        )
-        .limit(1);
-
-      if (!existing) {
-        return slug;
-      }
-
-      slug = `${base}-${counter}`;
-      counter += 1;
-    }
+  private async findActiveById(id: number): Promise<Category | undefined> {
+    return this.db.query.categories.findFirst({
+      where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
+    });
   }
 }

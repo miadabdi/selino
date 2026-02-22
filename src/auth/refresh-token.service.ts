@@ -1,14 +1,11 @@
-import { Inject, Injectable, UnauthorizedException } from "@nestjs/common";
+import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createHash, randomBytes } from "crypto";
-import { and, eq } from "drizzle-orm";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database } from "../database/database.types.js";
 import {
-  refreshTokens,
   type NewRefreshToken,
   type RefreshToken,
 } from "../database/schema/index.js";
+import { RefreshTokenRepository } from "./refresh-token.repository.js";
 
 type RefreshTokenRevokedReason = NonNullable<NewRefreshToken["revokedReason"]>;
 
@@ -17,7 +14,7 @@ export class RefreshTokenService {
   private readonly refreshTtlDays: number;
 
   constructor(
-    @Inject(DATABASE) private readonly db: Database,
+    private readonly refreshTokenRepository: RefreshTokenRepository,
     private readonly configService: ConfigService,
   ) {
     this.refreshTtlDays = parseInt(
@@ -51,7 +48,7 @@ export class RefreshTokenService {
       Date.now() + this.refreshTtlDays * 24 * 60 * 60 * 1000,
     );
 
-    await this.db.insert(refreshTokens).values({
+    await this.refreshTokenRepository.create({
       userId,
       tokenHash,
       jti: jti ?? null,
@@ -70,9 +67,8 @@ export class RefreshTokenService {
   ): Promise<{ newRawToken: string; tokenRecord: RefreshToken }> {
     const tokenHash = this.hashToken(rawToken);
 
-    const existing = await this.db.query.refreshTokens.findFirst({
-      where: (table) => eq(table.tokenHash, tokenHash),
-    });
+    const existing =
+      await this.refreshTokenRepository.findByTokenHash(tokenHash);
 
     if (!existing) {
       throw new UnauthorizedException("Invalid refresh token");
@@ -97,27 +93,18 @@ export class RefreshTokenService {
       Date.now() + this.refreshTtlDays * 24 * 60 * 60 * 1000,
     );
 
-    const [newRecord] = await this.db
-      .insert(refreshTokens)
-      .values({
-        userId: existing.userId,
-        tokenHash: newTokenHash,
-        expiresAt,
-        rotationCount: existing.rotationCount + 1,
-      })
-      .returning();
+    const newRecord = await this.refreshTokenRepository.create({
+      userId: existing.userId,
+      tokenHash: newTokenHash,
+      expiresAt,
+      rotationCount: existing.rotationCount + 1,
+    });
 
     // Revoke old token and link to replacement
-    await this.db
-      .update(refreshTokens)
-      .set({
-        isRevoked: true,
-        revokedAt: new Date(),
-        revokedReason: "rotate",
-        replacedBy: newRecord.id,
-        lastUsedAt: new Date(),
-      })
-      .where(eq(refreshTokens.id, existing.id));
+    await this.refreshTokenRepository.markRevokedForRotation(
+      existing.id,
+      newRecord.id,
+    );
 
     return { newRawToken, tokenRecord: newRecord };
   }
@@ -131,19 +118,7 @@ export class RefreshTokenService {
   ): Promise<void> {
     const tokenHash = this.hashToken(rawToken);
 
-    await this.db
-      .update(refreshTokens)
-      .set({
-        isRevoked: true,
-        revokedAt: new Date(),
-        revokedReason: reason,
-      })
-      .where(
-        and(
-          eq(refreshTokens.tokenHash, tokenHash),
-          eq(refreshTokens.isRevoked, false),
-        ),
-      );
+    await this.refreshTokenRepository.revokeByHash(tokenHash, reason);
   }
 
   /**
@@ -153,18 +128,6 @@ export class RefreshTokenService {
     userId: number,
     reason: RefreshTokenRevokedReason = "logout_all",
   ): Promise<void> {
-    await this.db
-      .update(refreshTokens)
-      .set({
-        isRevoked: true,
-        revokedAt: new Date(),
-        revokedReason: reason,
-      })
-      .where(
-        and(
-          eq(refreshTokens.userId, userId),
-          eq(refreshTokens.isRevoked, false),
-        ),
-      );
+    await this.refreshTokenRepository.revokeAllForUser(userId, reason);
   }
 }

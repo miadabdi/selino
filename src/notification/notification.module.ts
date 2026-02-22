@@ -6,6 +6,7 @@ import type { NotificationChannelHandler } from "./interfaces/notification-chann
 import { NOTIFICATION_CHANNELS } from "./notification.constants.js";
 import { NotificationConsumer } from "./notification.consumer.js";
 import { NotificationChannel } from "./notification.enums.js";
+import { NotificationRepository } from "./notification.repository.js";
 import { NotificationProducer } from "./notification.producer.js";
 import { NotificationService } from "./notification.service.js";
 import { EmailProvider } from "./providers/email/email-provider.abstract.js";
@@ -62,6 +63,7 @@ import { SmsirSmsProvider } from "./providers/sms/smsir-sms.provider.js";
     // ── RabbitMQ producer & consumer ──
     NotificationProducer,
     NotificationConsumer,
+    NotificationRepository,
 
     // ── Core service ──
     NotificationService,

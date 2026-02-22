@@ -1,27 +1,22 @@
 import { subject } from "@casl/ability";
-import { HttpStatus, Inject, Injectable } from "@nestjs/common";
-import { and, asc, eq, isNull, sql, SQL } from "drizzle-orm";
+import { HttpStatus, Injectable } from "@nestjs/common";
+import { eq, isNull, sql, type SQL } from "drizzle-orm";
 import { Action, CaslAbilityFactory } from "../auth/casl/index.js";
 import type { AuthenticatedUser } from "../auth/interfaces/index.js";
 import { CategoriesService } from "../categories/categories.service.js";
 import { throwHttpError } from "../common/http-error.js";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database } from "../database/database.types.js";
-import {
-  productImages,
-  products,
-  type CategorySpecSchema,
-} from "../database/schema/index.js";
+import { products, type CategorySpecSchema } from "../database/schema/index.js";
 import { FilesService } from "../files/files.service.js";
 import { AddProductImageDto } from "./dto/add-product-image.dto.js";
 import { CreateProductDto } from "./dto/create-product.dto.js";
 import { ReorderProductImagesDto } from "./dto/reorder-product-images.dto.js";
 import { UpdateProductDto } from "./dto/update-product.dto.js";
+import { ProductsRepository } from "./products.repository.js";
 
 @Injectable()
 export class ProductsService {
   constructor(
-    @Inject(DATABASE) private readonly db: Database,
+    private readonly productsRepository: ProductsRepository,
     private readonly filesService: FilesService,
     private readonly categoriesService: CategoriesService,
     private readonly caslAbilityFactory: CaslAbilityFactory,
@@ -86,10 +81,7 @@ export class ProductsService {
       }
     }
 
-    return this.db.query.products.findMany({
-      where: and(...whereClauses),
-      orderBy: (table) => [asc(table.id)],
-    });
+    return this.productsRepository.list(whereClauses);
   }
 
   async create(
@@ -103,25 +95,22 @@ export class ProductsService {
     );
     this.validateSpecs(category.specSchema ?? {}, dto.specs);
 
-    const [created] = await this.db
-      .insert(products)
-      .values({
-        categoryId: dto.categoryId,
-        brandId: dto.brandId ?? null,
-        title: dto.title,
-        model: dto.model ?? null,
-        specs: dto.specs,
-        attributes: dto.attributes ?? null,
-        warrantyMonths: dto.warrantyMonths ?? null,
-        releaseDate: dto.releaseDate ?? null,
-        weightGrams: dto.weightGrams ?? null,
-        dimensions: dto.dimensions ?? null,
-        searchText: dto.searchText ?? null,
-        status: dto.status ?? "draft",
-        isActive: dto.isActive ?? true,
-        defaultImageFileId: dto.defaultImageFileId ?? null,
-      })
-      .returning();
+    const created = await this.productsRepository.createProduct({
+      categoryId: dto.categoryId,
+      brandId: dto.brandId ?? null,
+      title: dto.title,
+      model: dto.model ?? null,
+      specs: dto.specs,
+      attributes: dto.attributes ?? null,
+      warrantyMonths: dto.warrantyMonths ?? null,
+      releaseDate: dto.releaseDate ?? null,
+      weightGrams: dto.weightGrams ?? null,
+      dimensions: dto.dimensions ?? null,
+      searchText: dto.searchText ?? null,
+      status: dto.status ?? "draft",
+      isActive: dto.isActive ?? true,
+      defaultImageFileId: dto.defaultImageFileId ?? null,
+    });
 
     if (pictures.length > 0) {
       const uploads = await Promise.all(
@@ -136,20 +125,24 @@ export class ProductsService {
         ),
       );
 
-      await this.db.transaction(async (tx) => {
+      await this.productsRepository.transaction(async (tx) => {
         for (const [index, uploaded] of uploads.entries()) {
-          await tx.insert(productImages).values({
-            productId: created.id,
-            fileId: uploaded.id,
-            position: index,
-          });
+          await this.productsRepository.createProductImage(
+            {
+              productId: created.id,
+              fileId: uploaded.id,
+              position: index,
+            },
+            tx,
+          );
         }
 
         if (created.defaultImageFileId == null && uploads.length > 0) {
-          await tx
-            .update(products)
-            .set({ defaultImageFileId: uploads[0].id, updatedAt: new Date() })
-            .where(eq(products.id, created.id));
+          await this.productsRepository.setDefaultImageFileId(
+            created.id,
+            uploads[0].id,
+            tx,
+          );
         }
       });
     }
@@ -158,14 +151,7 @@ export class ProductsService {
   }
 
   async getById(id: number) {
-    const product = await this.db.query.products.findFirst({
-      where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
-      with: {
-        images: {
-          orderBy: (table) => [asc(table.position), asc(table.id)],
-        },
-      },
-    });
+    const product = await this.productsRepository.findActiveByIdWithImages(id);
 
     if (!product) {
       throwHttpError(HttpStatus.NOT_FOUND, "Product not found");
@@ -189,27 +175,11 @@ export class ProductsService {
       this.validateSpecs(category.specSchema ?? {}, dto.specs);
     }
 
-    const [updated] = await this.db
-      .update(products)
-      .set({
-        categoryId: dto.categoryId,
-        brandId: dto.brandId,
-        title: dto.title,
-        model: dto.model,
-        specs: dto.specs,
-        attributes: dto.attributes,
-        warrantyMonths: dto.warrantyMonths,
-        releaseDate: dto.releaseDate,
-        weightGrams: dto.weightGrams,
-        dimensions: dto.dimensions,
-        searchText: dto.searchText,
-        status: dto.status,
-        isActive: dto.isActive,
-        defaultImageFileId: dto.defaultImageFileId,
-        updatedAt: new Date(),
-      })
-      .where(eq(products.id, id))
-      .returning();
+    const updated = await this.productsRepository.updateProductById(id, dto);
+
+    if (!updated) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Product not found");
+    }
 
     if (pictures.length > 0) {
       const uploads = await Promise.all(
@@ -224,29 +194,27 @@ export class ProductsService {
         ),
       );
 
-      const [maxPositionRow] = await this.db
-        .select({
-          max: sql<number>`coalesce(max(${productImages.position}), -1)::int`,
-        })
-        .from(productImages)
-        .where(eq(productImages.productId, id));
+      const startPosition =
+        (await this.productsRepository.getMaxImagePosition(id)) + 1;
 
-      const startPosition = (maxPositionRow?.max ?? -1) + 1;
-
-      await this.db.transaction(async (tx) => {
+      await this.productsRepository.transaction(async (tx) => {
         for (const [index, uploaded] of uploads.entries()) {
-          await tx.insert(productImages).values({
-            productId: id,
-            fileId: uploaded.id,
-            position: startPosition + index,
-          });
+          await this.productsRepository.createProductImage(
+            {
+              productId: id,
+              fileId: uploaded.id,
+              position: startPosition + index,
+            },
+            tx,
+          );
         }
 
         if (updated.defaultImageFileId == null && uploads.length > 0) {
-          await tx
-            .update(products)
-            .set({ defaultImageFileId: uploads[0].id, updatedAt: new Date() })
-            .where(eq(products.id, id));
+          await this.productsRepository.setDefaultImageFileId(
+            id,
+            uploads[0].id,
+            tx,
+          );
         }
       });
     }
@@ -257,10 +225,7 @@ export class ProductsService {
   async softDelete(id: number) {
     await this.getById(id);
 
-    await this.db
-      .update(products)
-      .set({ deletedAt: new Date(), updatedAt: new Date() })
-      .where(eq(products.id, id));
+    await this.productsRepository.softDeleteById(id);
 
     return { message: "Product deleted" };
   }
@@ -269,15 +234,12 @@ export class ProductsService {
     await this.getById(id);
     await this.filesService.assertFileReady(dto.fileId);
 
-    const [image] = await this.db
-      .insert(productImages)
-      .values({
-        productId: id,
-        fileId: dto.fileId,
-        position: dto.position ?? 0,
-        alt: dto.alt ?? null,
-      })
-      .returning();
+    const image = await this.productsRepository.createProductImage({
+      productId: id,
+      fileId: dto.fileId,
+      position: dto.position ?? 0,
+      alt: dto.alt ?? null,
+    });
 
     return image;
   }
@@ -285,10 +247,7 @@ export class ProductsService {
   async reorderImages(id: number, dto: ReorderProductImagesDto) {
     await this.getById(id);
 
-    const existing = await this.db.query.productImages.findMany({
-      columns: { id: true },
-      where: (table) => eq(table.productId, id),
-    });
+    const existing = await this.productsRepository.listImageIds(id);
 
     const existingIds = new Set(existing.map((row) => row.id));
 
@@ -310,21 +269,18 @@ export class ProductsService {
       }
     }
 
-    await this.db.transaction(async (tx) => {
+    await this.productsRepository.transaction(async (tx) => {
       for (const [index, imageId] of dto.imageIds.entries()) {
-        await tx
-          .update(productImages)
-          .set({ position: index })
-          .where(
-            and(eq(productImages.id, imageId), eq(productImages.productId, id)),
-          );
+        await this.productsRepository.updateImagePosition(
+          id,
+          imageId,
+          index,
+          tx,
+        );
       }
     });
 
-    return this.db.query.productImages.findMany({
-      where: (table) => eq(table.productId, id),
-      orderBy: (table) => [asc(table.position), asc(table.id)],
-    });
+    return this.productsRepository.listImagesByProductId(id);
   }
 
   private validateSpecs(

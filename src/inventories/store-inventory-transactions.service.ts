@@ -1,19 +1,17 @@
-import { Inject, Injectable } from "@nestjs/common";
-import { asc, eq } from "drizzle-orm";
+import { Injectable } from "@nestjs/common";
 import type { StockReason } from "../common/stock-reasons.js";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database } from "../database/database.types.js";
-import { storeInventoryTransactions } from "../database/schema/index.js";
+import { StoreInventoryTransactionsRepository } from "./store-inventory-transactions.repository.js";
 
 @Injectable()
 export class StoreInventoryTransactionsService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    private readonly storeInventoryTransactionsRepository: StoreInventoryTransactionsRepository,
+  ) {}
 
   async listByInventoryId(inventoryId: number) {
-    return this.db.query.storeInventoryTransactions.findMany({
-      where: (table) => eq(table.storeInventoryId, inventoryId),
-      orderBy: (table) => [asc(table.id)],
-    });
+    return this.storeInventoryTransactionsRepository.listByInventoryId(
+      inventoryId,
+    );
   }
 
   async create(
@@ -23,13 +21,13 @@ export class StoreInventoryTransactionsService {
     reference: string,
     changedBy: number,
   ) {
-    await this.db.insert(storeInventoryTransactions).values({
-      storeInventoryId: inventoryId,
+    await this.storeInventoryTransactionsRepository.create(
+      inventoryId,
       change,
       reason,
       reference,
       changedBy,
-    });
+    );
   }
 
   async createWithTx(
@@ -40,12 +38,13 @@ export class StoreInventoryTransactionsService {
     reference: string,
     changedBy: number,
   ) {
-    await tx.insert(storeInventoryTransactions).values({
-      storeInventoryId: inventoryId,
+    await this.storeInventoryTransactionsRepository.create(
+      inventoryId,
       change,
       reason,
       reference,
       changedBy,
-    });
+      tx,
+    );
   }
 }

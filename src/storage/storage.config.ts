@@ -18,13 +18,20 @@ export type StorageBucketsConfig = Record<BucketKey, BucketConfig>;
 export function createStorageBucketsConfig(
   configService: ConfigService,
 ): StorageBucketsConfig {
+  const productMediaMaxFileSizeBytes = configService.getOrThrow<number>(
+    "STORAGE_PRODUCT_MEDIA_MAX_FILE_SIZE_BYTES",
+  );
+  const profileMediaMaxFileSizeBytes = configService.getOrThrow<number>(
+    "STORAGE_PROFILE_MEDIA_MAX_FILE_SIZE_BYTES",
+  );
+
   return {
     productMedia: {
       bucketName: configService.getOrThrow<string>(
         "STORAGE_BUCKET_PRODUCT_MEDIA",
       ),
       isPublic: true,
-      maxFileSizeBytes: 10 * 1024 * 1024, // 10 MB
+      maxFileSizeBytes: productMediaMaxFileSizeBytes,
       allowedMimetypes: ["image/jpeg", "image/png", "image/webp", "video/mp4"],
     },
     profileMedia: {
@@ -32,7 +39,7 @@ export function createStorageBucketsConfig(
         "STORAGE_BUCKET_PROFILE_MEDIA",
       ),
       isPublic: false,
-      maxFileSizeBytes: 5 * 1024 * 1024, // 5 MB
+      maxFileSizeBytes: profileMediaMaxFileSizeBytes,
       allowedMimetypes: ["image/jpeg", "image/png", "image/webp"],
     },
   };

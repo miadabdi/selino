@@ -1,80 +1,62 @@
-import { ConflictException, Inject, Injectable } from "@nestjs/common";
-import { and, eq, isNull } from "drizzle-orm";
+import { ConflictException, Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import sharp from "sharp";
 import { AuthService } from "../auth/auth.service.js";
 import { AuthenticatedUser } from "../auth/interfaces/authenticated-user.interface.js";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database } from "../database/database.types.js";
 import { users, type NewUser, type User } from "../database/schema/index.js";
 import { FilesService } from "../files/files.service.js";
 import { UpdateUserDto } from "./dto/update-user.dto.js";
-
-/** Standard square resolution for profile pictures (px). */
-const PROFILE_PICTURE_SIZE = 512;
+import { UsersRepository } from "./users.repository.js";
 
 @Injectable()
 export class UsersService {
+  private readonly profilePictureSize: number;
+
   constructor(
-    @Inject(DATABASE) private readonly db: Database,
+    private readonly usersRepository: UsersRepository,
     private authService: AuthService,
     private filesService: FilesService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.profilePictureSize = this.configService.getOrThrow<number>(
+      "USER_PROFILE_PICTURE_SIZE",
+    );
+  }
 
   async findById(id: number): Promise<User | undefined> {
-    return this.db.query.users.findFirst({
-      where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
-    });
+    return this.usersRepository.findById(id);
   }
 
   async findAuthenticatedById(
     id: number,
   ): Promise<AuthenticatedUser | undefined> {
-    return this.db.query.users.findFirst({
-      where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
-      with: {
-        storeMemberships: {
-          where: (membership) => eq(membership.isActive, true),
-        },
-      },
-    });
+    return this.usersRepository.findAuthenticatedById(id) as Promise<
+      AuthenticatedUser | undefined
+    >;
   }
 
   async findByPhone(phone: string): Promise<User | undefined> {
-    return this.db.query.users.findFirst({
-      where: (table) => and(eq(table.phone, phone), isNull(table.deletedAt)),
-    });
+    return this.usersRepository.findByPhone(phone);
   }
 
   async findByEmail(email: string): Promise<User | undefined> {
-    return this.db.query.users.findFirst({
-      where: (table) => and(eq(table.email, email), isNull(table.deletedAt)),
-    });
+    return this.usersRepository.findByEmail(email);
   }
 
   async create(data: NewUser): Promise<User> {
-    const result = await this.db.insert(users).values(data).returning();
-    return result[0];
+    return this.usersRepository.create(data);
   }
 
   async updateLastLogin(id: number): Promise<void> {
-    await this.db
-      .update(users)
-      .set({ lastLoginAt: new Date() })
-      .where(eq(users.id, id));
+    await this.usersRepository.updateLastLogin(id);
   }
 
   async markPhoneVerified(id: number): Promise<void> {
-    await this.db
-      .update(users)
-      .set({ isPhoneVerified: true })
-      .where(eq(users.id, id));
+    await this.usersRepository.markPhoneVerified(id);
   }
 
   async markEmailVerified(id: number): Promise<void> {
-    await this.db
-      .update(users)
-      .set({ isEmailVerified: true })
-      .where(eq(users.id, id));
+    await this.usersRepository.markEmailVerified(id);
   }
 
   async update(
@@ -133,13 +115,7 @@ export class UsersService {
       await this.authService.sendEmailOtp(updateData.email, currentUser.id);
     }
 
-    const result = await this.db
-      .update(users)
-      .set(updateData)
-      .where(eq(users.id, id))
-      .returning();
-
-    return result[0];
+    return this.usersRepository.updateById(id, updateData);
   }
 
   /**
@@ -185,7 +161,7 @@ export class UsersService {
    */
   private async processProfileImage(buffer: Buffer): Promise<Buffer> {
     return sharp(buffer)
-      .resize(PROFILE_PICTURE_SIZE, PROFILE_PICTURE_SIZE, {
+      .resize(this.profilePictureSize, this.profilePictureSize, {
         fit: "cover",
         position: "centre",
       })

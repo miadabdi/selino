@@ -1,8 +1,12 @@
 import {
+  CallHandler,
   Body,
   Controller,
   Delete,
+  ExecutionContext,
   Get,
+  Injectable,
+  NestInterceptor,
   Param,
   ParseIntPipe,
   Patch,
@@ -12,6 +16,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
@@ -24,7 +29,25 @@ import { UpdateStoreBody } from "./dto/update-store-body.dto.js";
 import { UpdateStoreDto } from "./dto/update-store.dto.js";
 import { StoresService } from "./stores.service.js";
 
-const MAX_STORE_LOGO_BYTES = 10 * 1024 * 1024;
+@Injectable()
+export class StoreLogoUploadInterceptor implements NestInterceptor {
+  private readonly interceptor: NestInterceptor;
+
+  constructor(private readonly configService: ConfigService) {
+    const maxLogoBytes = this.configService.getOrThrow<number>(
+      "UPLOAD_MAX_STORE_LOGO_BYTES",
+    );
+    const MixinInterceptor = FileInterceptor("logo", {
+      limits: { fileSize: maxLogoBytes },
+      fileFilter: imageFileFilter,
+    });
+    this.interceptor = new MixinInterceptor();
+  }
+
+  intercept(context: ExecutionContext, next: CallHandler) {
+    return this.interceptor.intercept(context, next);
+  }
+}
 
 @ApiTags("Stores")
 @ApiBearerAuth()
@@ -34,12 +57,7 @@ export class StoresController {
   constructor(private readonly storesService: StoresService) {}
 
   @Post()
-  @UseInterceptors(
-    FileInterceptor("logo", {
-      limits: { fileSize: MAX_STORE_LOGO_BYTES },
-      fileFilter: imageFileFilter,
-    }),
-  )
+  @UseInterceptors(StoreLogoUploadInterceptor)
   @ApiConsumes("multipart/form-data")
   @ApiBody({ type: CreateStoreBody })
   create(
@@ -57,12 +75,7 @@ export class StoresController {
   }
 
   @Patch(":id")
-  @UseInterceptors(
-    FileInterceptor("logo", {
-      limits: { fileSize: MAX_STORE_LOGO_BYTES },
-      fileFilter: imageFileFilter,
-    }),
-  )
+  @UseInterceptors(StoreLogoUploadInterceptor)
   @ApiConsumes("multipart/form-data")
   @ApiBody({ type: UpdateStoreBody })
   update(

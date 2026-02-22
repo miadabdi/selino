@@ -9,6 +9,7 @@ import { AuthService } from "./auth.service.js";
 import { CaslAbilityFactory } from "./casl/casl-ability.factory.js";
 import { PoliciesGuard } from "./casl/policies.guard.js";
 import { UserEnrichmentGuard } from "./guards/user-enrichment.guard.js";
+import { RefreshTokenRepository } from "./refresh-token.repository.js";
 import { RefreshTokenService } from "./refresh-token.service.js";
 import { GoogleStrategy } from "./strategies/google.strategy.js";
 import { JwtStrategy } from "./strategies/jwt.strategy.js";
@@ -37,6 +38,7 @@ import { JwtStrategy } from "./strategies/jwt.strategy.js";
   providers: [
     AuthService,
     RefreshTokenService,
+    RefreshTokenRepository,
     CaslAbilityFactory,
     PoliciesGuard,
     JwtStrategy,
@@ -46,6 +48,7 @@ import { JwtStrategy } from "./strategies/jwt.strategy.js";
   exports: [
     AuthService,
     RefreshTokenService,
+    RefreshTokenRepository,
     CaslAbilityFactory,
     PoliciesGuard,
     UserEnrichmentGuard,

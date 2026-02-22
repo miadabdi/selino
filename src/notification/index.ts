@@ -14,6 +14,7 @@ export {
 export { NotificationConsumer } from "./notification.consumer.js";
 export { DeliveryStatus, NotificationChannel } from "./notification.enums.js";
 export { NotificationModule } from "./notification.module.js";
+export { NotificationRepository } from "./notification.repository.js";
 export { NotificationProducer } from "./notification.producer.js";
 export { NotificationService } from "./notification.service.js";
 export * from "./providers/index.js";

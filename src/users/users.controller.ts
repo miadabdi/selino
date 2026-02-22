@@ -1,13 +1,18 @@
 import {
+  CallHandler,
   Body,
   Controller,
+  ExecutionContext,
   HttpCode,
   HttpStatus,
+  Injectable,
+  NestInterceptor,
   Put,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
   ApiBearerAuth,
@@ -26,8 +31,25 @@ import { imageFileFilter } from "../files/index.js";
 import { UpdateProfileBody, UpdateUserDto, UserResponse } from "./dto/index.js";
 import { UsersService } from "./users.service.js";
 
-/** Max raw upload size (10 MB) – sharp will compress it further. */
-const MAX_PROFILE_IMAGE_BYTES = 10 * 1024 * 1024;
+@Injectable()
+export class ProfilePictureUploadInterceptor implements NestInterceptor {
+  private readonly interceptor: NestInterceptor;
+
+  constructor(private readonly configService: ConfigService) {
+    const maxProfileImageBytes = this.configService.getOrThrow<number>(
+      "UPLOAD_MAX_PROFILE_IMAGE_BYTES",
+    );
+    const MixinInterceptor = FileInterceptor("profilePicture", {
+      limits: { fileSize: maxProfileImageBytes },
+      fileFilter: imageFileFilter,
+    });
+    this.interceptor = new MixinInterceptor();
+  }
+
+  intercept(context: ExecutionContext, next: CallHandler) {
+    return this.interceptor.intercept(context, next);
+  }
+}
 
 @ApiTags("Users")
 @Controller("users")
@@ -43,12 +65,7 @@ export class UsersController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, UserEnrichmentGuard)
   @ApiBearerAuth()
-  @UseInterceptors(
-    FileInterceptor("profilePicture", {
-      limits: { fileSize: MAX_PROFILE_IMAGE_BYTES },
-      fileFilter: imageFileFilter,
-    }),
-  )
+  @UseInterceptors(ProfilePictureUploadInterceptor)
   @ApiConsumes("multipart/form-data")
   @ApiOperation({ summary: "Update current user's profile" })
   @ApiBody({ type: UpdateProfileBody })

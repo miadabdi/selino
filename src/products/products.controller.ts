@@ -1,8 +1,12 @@
 import {
+  CallHandler,
   Body,
   Controller,
   Delete,
+  ExecutionContext,
   Get,
+  Injectable,
+  NestInterceptor,
   Param,
   ParseIntPipe,
   Patch,
@@ -13,6 +17,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
@@ -28,8 +33,28 @@ import { UpdateProductBody } from "./dto/update-product-body.dto.js";
 import { UpdateProductDto } from "./dto/update-product.dto.js";
 import { ProductsService } from "./products.service.js";
 
-const MAX_PRODUCT_PICTURE_BYTES = 10 * 1024 * 1024;
-const MAX_PRODUCT_PICTURE_COUNT = 15;
+@Injectable()
+export class ProductPicturesUploadInterceptor implements NestInterceptor {
+  private readonly interceptor: NestInterceptor;
+
+  constructor(private readonly configService: ConfigService) {
+    const maxPictureCount = this.configService.getOrThrow<number>(
+      "UPLOAD_MAX_PRODUCT_PICTURE_COUNT",
+    );
+    const maxPictureBytes = this.configService.getOrThrow<number>(
+      "UPLOAD_MAX_PRODUCT_PICTURE_BYTES",
+    );
+    const MixinInterceptor = FilesInterceptor("pictures", maxPictureCount, {
+      limits: { fileSize: maxPictureBytes },
+      fileFilter: imageFileFilter,
+    });
+    this.interceptor = new MixinInterceptor();
+  }
+
+  intercept(context: ExecutionContext, next: CallHandler) {
+    return this.interceptor.intercept(context, next);
+  }
+}
 
 @ApiTags("Products")
 @ApiBearerAuth()
@@ -44,12 +69,7 @@ export class ProductsController {
   }
 
   @Post()
-  @UseInterceptors(
-    FilesInterceptor("pictures", MAX_PRODUCT_PICTURE_COUNT, {
-      limits: { fileSize: MAX_PRODUCT_PICTURE_BYTES },
-      fileFilter: imageFileFilter,
-    }),
-  )
+  @UseInterceptors(ProductPicturesUploadInterceptor)
   @ApiConsumes("multipart/form-data")
   @ApiBody({ type: CreateProductBody })
   create(
@@ -67,12 +87,7 @@ export class ProductsController {
   }
 
   @Patch(":id")
-  @UseInterceptors(
-    FilesInterceptor("pictures", MAX_PRODUCT_PICTURE_COUNT, {
-      limits: { fileSize: MAX_PRODUCT_PICTURE_BYTES },
-      fileFilter: imageFileFilter,
-    }),
-  )
+  @UseInterceptors(ProductPicturesUploadInterceptor)
   @ApiConsumes("multipart/form-data")
   @ApiBody({ type: UpdateProductBody })
   update(

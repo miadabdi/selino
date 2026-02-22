@@ -1,17 +1,14 @@
 import { subject } from "@casl/ability";
-import { HttpStatus, Inject, Injectable } from "@nestjs/common";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { HttpStatus, Injectable } from "@nestjs/common";
 import { Action, CaslAbilityFactory } from "../auth/casl/index.js";
 import type { AuthenticatedUser } from "../auth/interfaces/index.js";
 import { throwHttpError } from "../common/http-error.js";
 import { generateUniqueSlug } from "../common/slug.js";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database } from "../database/database.types.js";
 import {
-  categories,
   type Category,
   type CategorySpecSchema,
 } from "../database/schema/index.js";
+import { CategoriesRepository } from "./categories.repository.js";
 import { CreateCategoryDto } from "./dto/create-category.dto.js";
 import { ReplaceSpecSchemaDto } from "./dto/replace-spec-schema.dto.js";
 import { UpdateCategoryDto } from "./dto/update-category.dto.js";
@@ -19,7 +16,7 @@ import { UpdateCategoryDto } from "./dto/update-category.dto.js";
 @Injectable()
 export class CategoriesService {
   constructor(
-    @Inject(DATABASE) private readonly db: Database,
+    private readonly categoriesRepository: CategoriesRepository,
     private readonly caslAbilityFactory: CaslAbilityFactory,
   ) {}
 
@@ -36,10 +33,7 @@ export class CategoriesService {
   }
 
   async listHierarchy() {
-    const rows = await this.db.query.categories.findMany({
-      where: (table) => isNull(table.deletedAt),
-      orderBy: (table) => [asc(table.position), asc(table.id)],
-    });
+    const rows = await this.categoriesRepository.listActive();
 
     const byParent = new Map<number | null, Category[]>();
     for (const row of rows) {
@@ -64,21 +58,16 @@ export class CategoriesService {
     this.assertCategoryCasl(user, Action.Create);
     const slug = generateUniqueSlug(dto.name);
 
-    const [row] = await this.db
-      .insert(categories)
-      .values({
-        parentId: dto.parentId ?? null,
-        name: dto.name,
-        slug,
-        description: dto.description ?? null,
-        icon: dto.icon ?? null,
-        position: dto.position ?? 0,
-        isActive: dto.isActive ?? true,
-        specSchema: dto.specSchema ?? {},
-      })
-      .returning();
-
-    return row;
+    return this.categoriesRepository.create({
+      parentId: dto.parentId ?? null,
+      name: dto.name,
+      slug,
+      description: dto.description ?? null,
+      icon: dto.icon ?? null,
+      position: dto.position ?? 0,
+      isActive: dto.isActive ?? true,
+      specSchema: dto.specSchema ?? {},
+    });
   }
 
   async update(user: AuthenticatedUser, id: number, dto: UpdateCategoryDto) {
@@ -88,23 +77,16 @@ export class CategoriesService {
     const name = dto.name ?? current.name;
     const slug = dto.name != null ? generateUniqueSlug(dto.name) : current.slug;
 
-    const [updated] = await this.db
-      .update(categories)
-      .set({
-        parentId: dto.parentId,
-        name,
-        slug,
-        description: dto.description,
-        icon: dto.icon,
-        position: dto.position,
-        isActive: dto.isActive,
-        specSchema: dto.specSchema,
-        updatedAt: new Date(),
-      })
-      .where(eq(categories.id, id))
-      .returning();
-
-    return updated;
+    return this.categoriesRepository.updateById(id, {
+      parentId: dto.parentId,
+      name,
+      slug,
+      description: dto.description,
+      icon: dto.icon,
+      position: dto.position,
+      isActive: dto.isActive,
+      specSchema: dto.specSchema,
+    });
   }
 
   async getSpecSchema(id: number): Promise<CategorySpecSchema> {
@@ -120,11 +102,10 @@ export class CategoriesService {
     this.assertCategoryCasl(user, Action.Update);
     await this.getById(id);
 
-    const [updated] = await this.db
-      .update(categories)
-      .set({ specSchema: dto.specSchema, updatedAt: new Date() })
-      .where(eq(categories.id, id))
-      .returning();
+    const updated = await this.categoriesRepository.updateSpecSchema(
+      id,
+      dto.specSchema,
+    );
 
     return updated.specSchema ?? {};
   }
@@ -150,8 +131,6 @@ export class CategoriesService {
   }
 
   private async findActiveById(id: number): Promise<Category | undefined> {
-    return this.db.query.categories.findFirst({
-      where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
-    });
+    return this.categoriesRepository.findActiveById(id);
   }
 }

@@ -5,13 +5,10 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { and, eq, isNull } from "drizzle-orm";
+import { ConfigService } from "@nestjs/config";
 import { extname } from "path";
 import { v4 as uuidv4 } from "uuid";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database } from "../database/database.types.js";
 import {
-  files,
   type FileRecord,
   type NewFileRecord,
 } from "../database/schema/index.js";
@@ -22,20 +19,25 @@ import {
   type StorageBucketsConfig,
   type StorageProvider,
 } from "../storage/index.js";
-
-const PRESIGNED_URL_TTL = 3600; // 1 hour
+import { FilesRepository } from "./files.repository.js";
 
 @Injectable()
 export class FilesService {
   private readonly logger = new Logger(FilesService.name);
+  private readonly presignedUrlTtlSeconds: number;
 
   constructor(
-    @Inject(DATABASE) private readonly db: Database,
+    private readonly filesRepository: FilesRepository,
     @Inject(STORAGE_PROVIDER)
     private readonly storageProvider: StorageProvider,
     @Inject(STORAGE_BUCKETS)
     private readonly storageBuckets: StorageBucketsConfig,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.presignedUrlTtlSeconds = this.configService.getOrThrow<number>(
+      "FILES_PRESIGNED_URL_TTL_SECONDS",
+    );
+  }
 
   /**
    * Creates an upload intent: validates bucket constraints, creates a pending
@@ -83,22 +85,19 @@ export class FilesService {
       uploadedBy: uploadedBy ?? null,
     };
 
-    const [fileRecord] = await this.db
-      .insert(files)
-      .values(newFile)
-      .returning();
+    const fileRecord = await this.filesRepository.create(newFile);
 
     // Generate presigned PUT URL
     const uploadUrl = await this.storageProvider.getPresignedPutUrl(
       bucketConfig.bucketName,
       path,
       mimetype,
-      PRESIGNED_URL_TTL,
+      this.presignedUrlTtlSeconds,
       bucketConfig.maxFileSizeBytes,
     );
 
     const expiresAt = new Date(
-      Date.now() + PRESIGNED_URL_TTL * 1000,
+      Date.now() + this.presignedUrlTtlSeconds * 1000,
     ).toISOString();
 
     return {
@@ -160,10 +159,7 @@ export class FilesService {
       uploadedBy: uploadedBy ?? null,
     };
 
-    const [fileRecord] = await this.db
-      .insert(files)
-      .values(newFile)
-      .returning();
+    const fileRecord = await this.filesRepository.create(newFile);
 
     return fileRecord;
   }
@@ -193,22 +189,13 @@ export class FilesService {
       file.path,
     );
     if (!objectExists) {
-      await this.db
-        .update(files)
-        .set({ status: "failed" })
-        .where(eq(files.id, fileId));
+      await this.filesRepository.markStatus(fileId, "failed");
       throw new BadRequestException(
         `File ${fileId} was not found in storage. Status set to failed.`,
       );
     }
 
-    const [updated] = await this.db
-      .update(files)
-      .set({ status: "ready" })
-      .where(eq(files.id, fileId))
-      .returning();
-
-    return updated;
+    return this.filesRepository.markStatus(fileId, "ready");
   }
 
   /**
@@ -234,7 +221,7 @@ export class FilesService {
     return this.storageProvider.getPresignedGetUrl(
       file.bucketName,
       file.path,
-      PRESIGNED_URL_TTL,
+      this.presignedUrlTtlSeconds,
     );
   }
 
@@ -277,10 +264,7 @@ export class FilesService {
     }
 
     // Soft-delete the DB row
-    await this.db
-      .update(files)
-      .set({ deletedAt: new Date() })
-      .where(eq(files.id, fileId));
+    await this.filesRepository.softDeleteById(fileId);
   }
 
   /**
@@ -289,8 +273,6 @@ export class FilesService {
   private async findActiveById(
     fileId: number,
   ): Promise<FileRecord | undefined> {
-    return this.db.query.files.findFirst({
-      where: (table) => and(eq(table.id, fileId), isNull(table.deletedAt)),
-    });
+    return this.filesRepository.findActiveById(fileId);
   }
 }

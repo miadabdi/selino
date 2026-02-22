@@ -1,0 +1,88 @@
+import { Inject, Injectable } from "@nestjs/common";
+import { and, eq, gt } from "drizzle-orm";
+import { AbstractRepository } from "../common/abstract.repository.js";
+import { DATABASE } from "../database/database.constants.js";
+import type { Database, DBContext } from "../database/database.types.js";
+import { authOtps, type AuthOtp } from "../database/schema/index.js";
+
+@Injectable()
+export class OtpRepository extends AbstractRepository {
+  constructor(@Inject(DATABASE) db: Database) {
+    super(db);
+  }
+
+  async createPhoneOtp(
+    phone: string,
+    code: string,
+    expiresAt: Date,
+    userId?: number,
+    db: DBContext = this.db,
+  ): Promise<void> {
+    await db.insert(authOtps).values({
+      phone,
+      email: null,
+      code,
+      expiresAt,
+      userId: userId ?? null,
+      consumed: false,
+    });
+  }
+
+  async createEmailOtp(
+    email: string,
+    code: string,
+    expiresAt: Date,
+    userId?: number,
+    db: DBContext = this.db,
+  ): Promise<void> {
+    await db.insert(authOtps).values({
+      phone: null,
+      email,
+      code,
+      expiresAt,
+      userId: userId ?? null,
+      consumed: false,
+    });
+  }
+
+  findValidPhoneOtp(
+    phone: string,
+    code: string,
+    now: Date,
+    db: DBContext = this.db,
+  ): Promise<AuthOtp | undefined> {
+    return db.query.authOtps.findFirst({
+      where: (table) =>
+        and(
+          eq(table.phone, phone),
+          eq(table.code, code),
+          eq(table.consumed, false),
+          gt(table.expiresAt, now),
+        ),
+    });
+  }
+
+  findValidEmailOtp(
+    email: string,
+    code: string,
+    now: Date,
+    db: DBContext = this.db,
+  ): Promise<AuthOtp | undefined> {
+    return db.query.authOtps.findFirst({
+      where: (table) =>
+        and(
+          eq(table.email, email),
+          eq(table.code, code),
+          eq(table.consumed, false),
+          gt(table.expiresAt, now),
+        ),
+    });
+  }
+
+  async markConsumed(otpId: number, db: DBContext = this.db): Promise<void> {
+    await db
+      .update(authOtps)
+      .set({ consumed: true })
+      .where(eq(authOtps.id, otpId));
+  }
+}

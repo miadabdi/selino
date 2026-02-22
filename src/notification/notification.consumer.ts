@@ -1,9 +1,5 @@
 import { RabbitSubscribe } from "@golevelup/nestjs-rabbitmq";
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import { eq } from "drizzle-orm";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database } from "../database/database.types.js";
-import { notificationDeliveries } from "../database/schema/index.js";
 import type { NotificationChannelHandler } from "./interfaces/notification-channel.interface.js";
 import type { NotificationJobPayload } from "./interfaces/notification-job.interface.js";
 import {
@@ -12,6 +8,7 @@ import {
   NOTIFICATION_QUEUE_EMAIL,
   NOTIFICATION_QUEUE_SMS,
 } from "./notification.constants.js";
+import { NotificationRepository } from "./notification.repository.js";
 import { DeliveryStatus, NotificationChannel } from "./notification.enums.js";
 
 /**
@@ -23,7 +20,7 @@ export class NotificationConsumer {
   private readonly logger = new Logger(NotificationConsumer.name);
 
   constructor(
-    @Inject(DATABASE) private readonly db: Database,
+    private readonly notificationRepository: NotificationRepository,
     @Inject(NOTIFICATION_CHANNELS)
     private readonly channels: Map<
       NotificationChannel,
@@ -76,15 +73,11 @@ export class NotificationConsumer {
       );
 
       if (deliveryId) {
-        await this.db
-          .update(notificationDeliveries)
-          .set({
-            status: result.success
-              ? DeliveryStatus.SENT
-              : DeliveryStatus.FAILED,
-            error: result.error ?? null,
-          })
-          .where(eq(notificationDeliveries.id, deliveryId));
+        await this.notificationRepository.updateDelivery(
+          deliveryId,
+          result.success ? DeliveryStatus.SENT : DeliveryStatus.FAILED,
+          result.error ?? null,
+        );
       }
 
       if (!result.success) {
@@ -107,9 +100,10 @@ export class NotificationConsumer {
     error: string,
   ): Promise<void> {
     if (!deliveryId) return;
-    await this.db
-      .update(notificationDeliveries)
-      .set({ status: DeliveryStatus.FAILED, error })
-      .where(eq(notificationDeliveries.id, deliveryId));
+    await this.notificationRepository.updateDelivery(
+      deliveryId,
+      DeliveryStatus.FAILED,
+      error,
+    );
   }
 }

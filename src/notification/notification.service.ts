@@ -1,11 +1,6 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database } from "../database/database.types.js";
-import {
-  notificationDeliveries,
-  notifications,
-} from "../database/schema/index.js";
+import { Injectable, Logger } from "@nestjs/common";
 import type { SendNotificationOptions } from "./interfaces/send-notification.interface.js";
+import { NotificationRepository } from "./notification.repository.js";
 import { DeliveryStatus } from "./notification.enums.js";
 import { NotificationProducer } from "./notification.producer.js";
 
@@ -14,7 +9,7 @@ export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
 
   constructor(
-    @Inject(DATABASE) private readonly db: Database,
+    private readonly notificationRepository: NotificationRepository,
     private readonly producer: NotificationProducer,
   ) {}
 
@@ -31,25 +26,22 @@ export class NotificationService {
 
     let notificationId: number | undefined;
     if (userId) {
-      const [notification] = await this.db
-        .insert(notifications)
-        .values({ userId, type, title, body })
-        .returning();
-      notificationId = notification.id;
+      notificationId = await this.notificationRepository.createNotification(
+        userId,
+        type,
+        title,
+        body,
+      );
     }
 
     let deliveryId: number | undefined;
     if (notificationId) {
-      const [delivery] = await this.db
-        .insert(notificationDeliveries)
-        .values({
-          notificationId,
-          channel,
-          destination,
-          status: DeliveryStatus.PENDING,
-        })
-        .returning();
-      deliveryId = delivery.id;
+      deliveryId = await this.notificationRepository.createDelivery(
+        notificationId,
+        channel,
+        destination,
+        DeliveryStatus.PENDING,
+      );
     }
 
     await this.producer.publish({

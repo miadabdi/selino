@@ -25,8 +25,7 @@ import { STORAGE_BUCKETS, STORAGE_PROVIDER } from "./storage.constants.js";
           configService.getOrThrow<string>("STORAGE_REGION"),
           configService.getOrThrow<string>("STORAGE_ACCESS_KEY_ID"),
           configService.getOrThrow<string>("STORAGE_SECRET_ACCESS_KEY"),
-          configService.get<string>("STORAGE_FORCE_PATH_STYLE", "false") ===
-            "true",
+          configService.getOrThrow<boolean>("STORAGE_FORCE_PATH_STYLE"),
           configService.get<string>("STORAGE_PUBLIC_URL_BASE", ""),
         );
       },

@@ -1,21 +1,18 @@
 import { subject } from "@casl/ability";
-import { HttpStatus, Inject, Injectable } from "@nestjs/common";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { HttpStatus, Injectable } from "@nestjs/common";
 import { Action, CaslAbilityFactory } from "../auth/casl/index.js";
 import type { AuthenticatedUser } from "../auth/interfaces/index.js";
 import { throwHttpError } from "../common/http-error.js";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database } from "../database/database.types.js";
-import { storeInventories } from "../database/schema/index.js";
 import { CreateInventoryDto } from "./dto/create-inventory.dto.js";
 import { RestockInventoryDto } from "./dto/restock-inventory.dto.js";
 import { UpdateInventoryDto } from "./dto/update-inventory.dto.js";
+import { InventoriesRepository } from "./inventories.repository.js";
 import { StoreInventoryTransactionsService } from "./store-inventory-transactions.service.js";
 
 @Injectable()
 export class InventoriesService {
   constructor(
-    @Inject(DATABASE) private readonly db: Database,
+    private readonly inventoriesRepository: InventoriesRepository,
     private readonly caslAbilityFactory: CaslAbilityFactory,
     private readonly storeInventoryTransactionsService: StoreInventoryTransactionsService,
   ) {}
@@ -45,20 +42,11 @@ export class InventoriesService {
     await this.assertStoreExists(storeId);
     await this.assertProductExists(dto.productId);
 
-    const [created] = await this.db
-      .insert(storeInventories)
-      .values({
-        storeId,
-        productId: dto.productId,
-        price: dto.price,
-        stock: dto.stock ?? 0,
-        minOrderQty: dto.minOrderQty ?? 1,
-        maxOrderQty: dto.maxOrderQty ?? null,
-        isActive: dto.isActive ?? true,
-        visible: dto.visible ?? true,
-        createdBy: user.id,
-      })
-      .returning();
+    const created = await this.inventoriesRepository.create(
+      storeId,
+      user.id,
+      dto,
+    );
 
     if ((dto.stock ?? 0) > 0) {
       await this.storeInventoryTransactionsService.create(
@@ -82,19 +70,11 @@ export class InventoriesService {
     this.assertInventoryCasl(user, Action.Update, storeId);
     await this.assertInventory(storeId, inventoryId);
 
-    const [updated] = await this.db
-      .update(storeInventories)
-      .set({
-        stock: sql`${storeInventories.stock} + ${dto.qty}`,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(storeInventories.id, inventoryId),
-          eq(storeInventories.storeId, storeId),
-        ),
-      )
-      .returning();
+    const updated = await this.inventoriesRepository.restock(
+      storeId,
+      inventoryId,
+      dto.qty,
+    );
 
     await this.storeInventoryTransactionsService.create(
       inventoryId,
@@ -110,10 +90,7 @@ export class InventoriesService {
   async list(storeId: number) {
     await this.assertStoreExists(storeId);
 
-    const rows = await this.db.query.storeInventories.findMany({
-      where: (table) => eq(table.storeId, storeId),
-      orderBy: (table) => [asc(table.id)],
-    });
+    const rows = await this.inventoriesRepository.listByStoreId(storeId);
 
     return rows;
   }
@@ -127,23 +104,11 @@ export class InventoriesService {
     this.assertInventoryCasl(user, Action.Update, storeId);
     await this.assertInventory(storeId, inventoryId);
 
-    const [updated] = await this.db
-      .update(storeInventories)
-      .set({
-        price: dto.price,
-        minOrderQty: dto.minOrderQty,
-        maxOrderQty: dto.maxOrderQty,
-        isActive: dto.isActive,
-        visible: dto.visible,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(storeInventories.id, inventoryId),
-          eq(storeInventories.storeId, storeId),
-        ),
-      )
-      .returning();
+    const updated = await this.inventoriesRepository.updateById(
+      storeId,
+      inventoryId,
+      dto,
+    );
 
     return updated;
   }
@@ -157,19 +122,10 @@ export class InventoriesService {
   }
 
   async reserveStock(inventoryId: number, qty: number) {
-    const result = await this.db
-      .update(storeInventories)
-      .set({
-        reservedStock: sql`${storeInventories.reservedStock} + ${qty}`,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(storeInventories.id, inventoryId),
-          sql`${storeInventories.stock} - ${storeInventories.reservedStock} >= ${qty}`,
-        ),
-      )
-      .returning();
+    const result = await this.inventoriesRepository.reserveStock(
+      inventoryId,
+      qty,
+    );
 
     if (result.length === 0) {
       throwHttpError(HttpStatus.CONFLICT, "Out of stock");
@@ -179,19 +135,10 @@ export class InventoriesService {
   }
 
   async releaseReservedStock(inventoryId: number, qty: number) {
-    const result = await this.db
-      .update(storeInventories)
-      .set({
-        reservedStock: sql`${storeInventories.reservedStock} - ${qty}`,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(storeInventories.id, inventoryId),
-          sql`${storeInventories.reservedStock} >= ${qty}`,
-        ),
-      )
-      .returning();
+    const result = await this.inventoriesRepository.releaseReservedStock(
+      inventoryId,
+      qty,
+    );
 
     if (result.length === 0) {
       throwHttpError(HttpStatus.CONFLICT, "Stock reservation conflict");
@@ -207,21 +154,11 @@ export class InventoriesService {
     reference: string,
     changedBy: number,
   ) {
-    const result = await tx
-      .update(storeInventories)
-      .set({
-        stock: sql`${storeInventories.stock} - ${qty}`,
-        reservedStock: sql`${storeInventories.reservedStock} - ${qty}`,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(storeInventories.id, inventoryId),
-          sql`${storeInventories.stock} >= ${qty}`,
-          sql`${storeInventories.reservedStock} >= ${qty}`,
-        ),
-      )
-      .returning();
+    const result = await this.inventoriesRepository.consumeReservedStock(
+      inventoryId,
+      qty,
+      tx,
+    );
 
     if (result.length === 0) {
       throwHttpError(HttpStatus.CONFLICT, "Insufficient stock for sale");
@@ -240,10 +177,11 @@ export class InventoriesService {
   }
 
   async assertInventory(storeId: number, inventoryId: number) {
-    const inventory = await this.db.query.storeInventories.findFirst({
-      where: (table) =>
-        and(eq(table.id, inventoryId), eq(table.storeId, storeId)),
-    });
+    const inventory =
+      await this.inventoriesRepository.findInventoryByStoreAndId(
+        storeId,
+        inventoryId,
+      );
 
     if (!inventory) {
       throwHttpError(HttpStatus.NOT_FOUND, "Inventory not found");
@@ -253,9 +191,8 @@ export class InventoriesService {
   }
 
   async findInventoryById(inventoryId: number) {
-    const inventory = await this.db.query.storeInventories.findFirst({
-      where: (table) => eq(table.id, inventoryId),
-    });
+    const inventory =
+      await this.inventoriesRepository.findInventoryById(inventoryId);
 
     if (!inventory) {
       throwHttpError(
@@ -269,10 +206,7 @@ export class InventoriesService {
   }
 
   private async assertStoreExists(storeId: number) {
-    const store = await this.db.query.stores.findFirst({
-      columns: { id: true },
-      where: (table) => and(eq(table.id, storeId), isNull(table.deletedAt)),
-    });
+    const store = await this.inventoriesRepository.findActiveStoreById(storeId);
 
     if (!store) {
       throwHttpError(HttpStatus.NOT_FOUND, "Store not found");
@@ -280,10 +214,8 @@ export class InventoriesService {
   }
 
   private async assertProductExists(productId: number) {
-    const product = await this.db.query.products.findFirst({
-      columns: { id: true },
-      where: (table) => and(eq(table.id, productId), isNull(table.deletedAt)),
-    });
+    const product =
+      await this.inventoriesRepository.findActiveProductById(productId);
 
     if (!product) {
       throwHttpError(HttpStatus.BAD_REQUEST, "Product not found", "productId");

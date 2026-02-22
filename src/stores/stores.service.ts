@@ -1,27 +1,20 @@
 import {
   ConflictException,
-  Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { and, eq, isNull } from "drizzle-orm";
 import { generateUniqueSlug } from "../common/slug.js";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database } from "../database/database.types.js";
-import {
-  StoreMemberRole,
-  storeMembers,
-  stores,
-} from "../database/schema/index.js";
+import { StoreMemberRole } from "../database/schema/index.js";
 import { FilesService } from "../files/files.service.js";
 import { AddStoreMemberDto } from "./dto/add-store-member.dto.js";
 import { CreateStoreDto } from "./dto/create-store.dto.js";
 import { UpdateStoreDto } from "./dto/update-store.dto.js";
+import { StoresRepository } from "./stores.repository.js";
 
 @Injectable()
 export class StoresService {
   constructor(
-    @Inject(DATABASE) private readonly db: Database,
+    private readonly storesRepository: StoresRepository,
     private readonly filesService: FilesService,
   ) {}
 
@@ -43,32 +36,33 @@ export class StoresService {
         ).id
       : null;
 
-    return this.db.transaction(async (tx) => {
-      const [store] = await tx
-        .insert(stores)
-        .values({
+    return this.storesRepository.transaction(async (tx) => {
+      const store = await this.storesRepository.createStore(
+        {
           name: dto.name,
           slug,
           description: dto.description ?? null,
           logoFileId,
           ownerId: userId,
-        })
-        .returning();
+        },
+        tx,
+      );
 
-      await tx.insert(storeMembers).values({
-        storeId: store.id,
-        userId,
-        role: StoreMemberRole.Owner,
-      });
+      await this.storesRepository.createStoreMember(
+        {
+          storeId: store.id,
+          userId,
+          role: StoreMemberRole.Owner,
+        },
+        tx,
+      );
 
       return store;
     });
   }
 
   async getById(id: number) {
-    const store = await this.db.query.stores.findFirst({
-      where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
-    });
+    const store = await this.storesRepository.findActiveStoreById(id);
 
     if (!store) {
       throw new NotFoundException("Store not found");
@@ -78,15 +72,10 @@ export class StoresService {
   }
 
   async getMemberRole(userId: number, storeId: number) {
-    const member = await this.db.query.storeMembers.findFirst({
-      columns: { role: true },
-      where: (table) =>
-        and(
-          eq(table.userId, userId),
-          eq(table.storeId, storeId),
-          eq(table.isActive, true),
-        ),
-    });
+    const member = await this.storesRepository.findActiveMemberRole(
+      userId,
+      storeId,
+    );
 
     return member?.role ?? null;
   }
@@ -116,31 +105,19 @@ export class StoresService {
       ).id;
     }
 
-    const [store] = await this.db
-      .update(stores)
-      .set({
-        name,
-        slug,
-        description: dto.description,
-        logoFileId,
-        updatedAt: new Date(),
-      })
-      .where(eq(stores.id, id))
-      .returning();
-
-    return store;
+    return this.storesRepository.updateStoreById(
+      id,
+      dto,
+      name,
+      slug,
+      logoFileId,
+    );
   }
 
   async softDelete(id: number) {
     await this.getById(id);
 
-    await this.db
-      .update(stores)
-      .set({
-        deletedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(stores.id, id));
+    await this.storesRepository.softDeleteStoreById(id);
 
     return { message: "Store deleted" };
   }
@@ -148,36 +125,22 @@ export class StoresService {
   async addMember(storeId: number, dto: AddStoreMemberDto) {
     await this.getById(storeId);
 
-    const existing = await this.db.query.storeMembers.findFirst({
-      where: (table) =>
-        and(eq(table.storeId, storeId), eq(table.userId, dto.userId)),
-    });
+    const existing = await this.storesRepository.findStoreMember(
+      storeId,
+      dto.userId,
+    );
 
     if (existing) {
       throw new ConflictException("User is already a store member", "userId");
     }
 
-    const [member] = await this.db
-      .insert(storeMembers)
-      .values({
-        storeId,
-        userId: dto.userId,
-        role: dto.role,
-      })
-      .returning();
-
-    return member;
+    return this.storesRepository.createMember(storeId, dto.userId, dto.role);
   }
 
   async removeMember(storeId: number, userId: number) {
     await this.getById(storeId);
 
-    const result = await this.db
-      .delete(storeMembers)
-      .where(
-        and(eq(storeMembers.storeId, storeId), eq(storeMembers.userId, userId)),
-      )
-      .returning();
+    const result = await this.storesRepository.removeMember(storeId, userId);
 
     if (result.length === 0) {
       throw new NotFoundException("Store member not found");

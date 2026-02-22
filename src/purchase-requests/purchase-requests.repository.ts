@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { and, desc, eq, exists, gt, lt, sql } from "drizzle-orm";
 import { AbstractRepository } from "../common/abstract.repository";
 import { DATABASE } from "../database/database.constants";
-import type { Database, DBContext } from "../database/database.types";
+import type { Database, TXContext } from "../database/database.types";
 import {
   invoiceItems,
   invoices,
@@ -24,9 +24,9 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     userId: number,
     storeInventoryId: number,
     now: Date,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    return db
+    return txContext
       .select({ qty: purchaseRequestItems.qty })
       .from(purchaseRequestItems)
       .innerJoin(
@@ -47,9 +47,9 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     userId: number,
     storeId: number,
     now: Date,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    const [row] = await db
+    const [row] = await txContext
       .select()
       .from(purchaseRequests)
       .where(
@@ -66,8 +66,11 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     return row;
   }
 
-  async createRequest(data: NewPurchaseRequest, db: DBContext = this.db) {
-    const [created] = await db
+  async createRequest(
+    data: NewPurchaseRequest,
+    txContext: TXContext = this.db,
+  ) {
+    const [created] = await txContext
       .insert(purchaseRequests)
       .values(data)
       .returning();
@@ -77,24 +80,30 @@ export class PurchaseRequestsRepository extends AbstractRepository {
   async touchRequestExpiry(
     requestId: number,
     expiresAt: Date,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    await db
+    await txContext
       .update(purchaseRequests)
       .set({ expiresAt, updatedAt: new Date() })
       .where(eq(purchaseRequests.id, requestId));
   }
 
-  async createItem(data: NewPurchaseRequestItem, db: DBContext = this.db) {
-    const [created] = await db
+  async createItem(
+    data: NewPurchaseRequestItem,
+    txContext: TXContext = this.db,
+  ) {
+    const [created] = await txContext
       .insert(purchaseRequestItems)
       .values(data)
       .returning();
     return created;
   }
 
-  async getItemWithRequestForRemoval(itemId: number, db: DBContext = this.db) {
-    const [item] = await db
+  async getItemWithRequestForRemoval(
+    itemId: number,
+    txContext: TXContext = this.db,
+  ) {
+    const [item] = await txContext
       .select({
         id: purchaseRequestItems.id,
         qty: purchaseRequestItems.qty,
@@ -118,16 +127,16 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     itemId: number,
     purchaseRequestId: number,
     requesterId: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    const [removed] = await db
+    const [removed] = await txContext
       .delete(purchaseRequestItems)
       .where(
         and(
           eq(purchaseRequestItems.id, itemId),
           eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId),
           exists(
-            db
+            txContext
               .select({ id: purchaseRequests.id })
               .from(purchaseRequests)
               .where(
@@ -150,9 +159,9 @@ export class PurchaseRequestsRepository extends AbstractRepository {
 
   async countItemsByRequestId(
     purchaseRequestId: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ) {
-    const [row] = await db
+    const [row] = await txContext
       .select({ count: sql<number>`count(*)::int` })
       .from(purchaseRequestItems)
       .where(eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId));
@@ -162,16 +171,19 @@ export class PurchaseRequestsRepository extends AbstractRepository {
 
   async setRequestCancelled(
     purchaseRequestId: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<void> {
-    await db
+    await txContext
       .update(purchaseRequests)
       .set({ status: "cancelled", totalAmount: 0, updatedAt: new Date() })
       .where(eq(purchaseRequests.id, purchaseRequestId));
   }
 
-  findActiveWithItemsByRequester(requesterId: number, db: DBContext = this.db) {
-    return db.query.purchaseRequests.findFirst({
+  findActiveWithItemsByRequester(
+    requesterId: number,
+    txContext: TXContext = this.db,
+  ) {
+    return txContext.query.purchaseRequests.findFirst({
       where: (table) =>
         and(
           eq(table.requesterId, requesterId),
@@ -185,8 +197,8 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     });
   }
 
-  async findById(id: number, db: DBContext = this.db) {
-    const [row] = await db
+  async findById(id: number, txContext: TXContext = this.db) {
+    const [row] = await txContext
       .select()
       .from(purchaseRequests)
       .where(eq(purchaseRequests.id, id))
@@ -195,57 +207,77 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     return row;
   }
 
-  listItemsByRequestId(purchaseRequestId: number, db: DBContext = this.db) {
-    return db
+  listItemsByRequestId(
+    purchaseRequestId: number,
+    txContext: TXContext = this.db,
+  ) {
+    return txContext
       .select()
       .from(purchaseRequestItems)
       .where(eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId));
   }
 
-  async createInvoice(data: NewInvoice, db: DBContext = this.db) {
-    const [invoice] = await db.insert(invoices).values(data).returning();
+  async createInvoice(data: NewInvoice, txContext: TXContext = this.db) {
+    const [invoice] = await txContext.insert(invoices).values(data).returning();
     return invoice;
   }
 
   async createInvoiceItem(
     data: NewInvoiceItem,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<void> {
-    await db.insert(invoiceItems).values(data);
+    await txContext.insert(invoiceItems).values(data);
   }
 
   async setRequestConfirmed(
     purchaseRequestId: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<void> {
-    await db
+    await txContext
       .update(purchaseRequests)
       .set({ status: "confirmed", updatedAt: new Date() })
       .where(eq(purchaseRequests.id, purchaseRequestId));
   }
 
-  findExpiredOpenRequestIds(now: Date, db: DBContext = this.db) {
-    return db.query.purchaseRequests.findMany({
-      columns: { id: true },
-      where: (table) => and(eq(table.status, "new"), lt(table.expiresAt, now)),
-    });
+  findExpiredOpenRequestIds(now: Date, txContext: TXContext = this.db) {
+    return txContext
+      .select({ id: purchaseRequests.id })
+      .from(purchaseRequests)
+      .where(
+        and(
+          eq(purchaseRequests.status, "new"),
+          lt(purchaseRequests.expiresAt, now),
+        ),
+      );
   }
 
   async findExpiredOpenById(
     requestId: number,
     now: Date,
-    db: DBContext = this.db,
+    forUpdate: boolean = false,
+    txContext: TXContext = this.db,
   ) {
-    const [row] = await db
+    const whereClause = and(
+      eq(purchaseRequests.id, requestId),
+      eq(purchaseRequests.status, "new"),
+      lt(purchaseRequests.expiresAt, now),
+    );
+
+    if (forUpdate) {
+      const [row] = await txContext
+        .select()
+        .from(purchaseRequests)
+        .where(whereClause)
+        .limit(1)
+        .for("update", { skipLocked: true });
+
+      return row;
+    }
+
+    const [row] = await txContext
       .select()
       .from(purchaseRequests)
-      .where(
-        and(
-          eq(purchaseRequests.id, requestId),
-          eq(purchaseRequests.status, "new"),
-          lt(purchaseRequests.expiresAt, now),
-        ),
-      )
+      .where(whereClause)
       .limit(1);
 
     return row;
@@ -253,9 +285,9 @@ export class PurchaseRequestsRepository extends AbstractRepository {
 
   async setRequestExpired(
     purchaseRequestId: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<void> {
-    await db
+    await txContext
       .update(purchaseRequests)
       .set({ status: "expired", totalAmount: 0, updatedAt: new Date() })
       .where(eq(purchaseRequests.id, purchaseRequestId));
@@ -263,16 +295,16 @@ export class PurchaseRequestsRepository extends AbstractRepository {
 
   async recalculateTotal(
     purchaseRequestId: number,
-    db: DBContext = this.db,
+    txContext: TXContext = this.db,
   ): Promise<void> {
-    const [row] = await db
+    const [row] = await txContext
       .select({
         total: sql<number>`coalesce(sum(${purchaseRequestItems.total}), 0)::numeric`,
       })
       .from(purchaseRequestItems)
       .where(eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId));
 
-    await db
+    await txContext
       .update(purchaseRequests)
       .set({ totalAmount: row?.total ?? 0, updatedAt: new Date() })
       .where(eq(purchaseRequests.id, purchaseRequestId));

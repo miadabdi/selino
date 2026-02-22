@@ -9,7 +9,8 @@ import { ConfigService } from "@nestjs/config";
 import { Action, CaslAbilityFactory } from "../auth/casl/index";
 import type { AuthenticatedUser } from "../auth/interfaces/index";
 import { throwHttpError } from "../common/http-error";
-import { InventoriesService } from "../inventories/inventories.service";
+import { InventoriesRepository } from "../inventories/inventories.repository";
+import { StoreInventoryTransactionsRepository } from "../inventories/store-inventory-transactions.repository";
 import { AddPurchaseRequestItemDto } from "./dto/add-purchase-request-item.dto";
 import { PurchaseRequestsRepository } from "./purchase-requests.repository";
 
@@ -22,7 +23,8 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly purchaseRequestsRepository: PurchaseRequestsRepository,
-    private readonly inventoriesService: InventoriesService,
+    private readonly inventoriesRepository: InventoriesRepository,
+    private readonly storeInventoryTransactionsRepository: StoreInventoryTransactionsRepository,
     private readonly caslAbilityFactory: CaslAbilityFactory,
     private readonly configService: ConfigService,
   ) {
@@ -46,52 +48,73 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  private assertPurchaseRequestCasl(
+    user: AuthenticatedUser,
+    requesterId: number,
+    action: Action,
+  ) {
+    const ability = this.caslAbilityFactory.createForUser(user);
+    const canUpdatePurchaseRequest = ability.can(
+      action,
+      subject("PurchaseRequest", { requesterId }),
+    );
+
+    if (!canUpdatePurchaseRequest) {
+      throwHttpError(
+        HttpStatus.FORBIDDEN,
+        "You do not have permission for this action",
+      );
+    }
+  }
+
   async addItem(userId: number, dto: AddPurchaseRequestItemDto) {
-    const inventory = await this.inventoriesService.findInventoryById(
+    const inventory = await this.inventoriesRepository.findInventoryById(
       dto.storeInventoryId,
     );
 
     if (!inventory) {
-      throwHttpError(HttpStatus.NOT_FOUND, "Store inventory not found");
+      throwHttpError(
+        HttpStatus.NOT_FOUND,
+        "Inventory not found",
+        "storeInventoryId",
+      );
     }
 
+    const activeReservationRows =
+      await this.purchaseRequestsRepository.findActiveReservationRows(
+        userId,
+        dto.storeInventoryId,
+        new Date(),
+      );
+
+    const existingQty = activeReservationRows.reduce(
+      (sum, row) => sum + row.qty,
+      0,
+    );
+    if (
+      inventory.maxOrderQty != null &&
+      existingQty + dto.qty > inventory.maxOrderQty
+    ) {
+      throwHttpError(
+        HttpStatus.CONFLICT,
+        "Quantity exceeds max_order_qty",
+        "qty",
+      );
+    }
+
+    const existingRequest =
+      await this.purchaseRequestsRepository.findLatestActiveRequestForUserStore(
+        userId,
+        inventory.storeId,
+        new Date(),
+      );
+
+    let requestId = existingRequest?.id;
+    const expiresAt = new Date(
+      Date.now() + this.requestActiveWindowMinutes * 60 * 1000,
+    );
+
     return this.purchaseRequestsRepository.transaction(async (tx) => {
-      const activeReservationRows =
-        await this.purchaseRequestsRepository.findActiveReservationRows(
-          userId,
-          dto.storeInventoryId,
-          new Date(),
-          tx,
-        );
-
-      const existingQty = activeReservationRows.reduce(
-        (sum, row) => sum + row.qty,
-        0,
-      );
-      if (
-        inventory.maxOrderQty != null &&
-        existingQty + dto.qty > inventory.maxOrderQty
-      ) {
-        throwHttpError(
-          HttpStatus.CONFLICT,
-          "Quantity exceeds max_order_qty",
-          "qty",
-        );
-      }
-
-      const existingRequest =
-        await this.purchaseRequestsRepository.findLatestActiveRequestForUserStore(
-          userId,
-          inventory.storeId,
-          new Date(),
-          tx,
-        );
-
-      let requestId = existingRequest?.id;
-      const expiresAt = new Date(
-        Date.now() + this.requestActiveWindowMinutes * 60 * 1000,
-      );
-
       if (!requestId) {
         const createdRequest =
           await this.purchaseRequestsRepository.createRequest(
@@ -113,7 +136,15 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
-      await this.inventoriesService.reserveStock(inventory.id, dto.qty);
+      const reserved = await this.inventoriesRepository.reserveStock(
+        inventory.id,
+        dto.qty,
+        tx,
+      );
+
+      if (reserved.length === 0) {
+        throwHttpError(HttpStatus.CONFLICT, "Out of stock");
+      }
 
       const item = await this.purchaseRequestsRepository.createItem(
         {
@@ -134,23 +165,22 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async removeItem(user: AuthenticatedUser, itemId: number) {
+    const item =
+      await this.purchaseRequestsRepository.getItemWithRequestForRemoval(
+        itemId,
+      );
+
+    if (!item) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
+    }
+
+    this.assertPurchaseRequestCasl(user, item.requesterId, Action.Update);
+
+    if (item.purchaseRequestStatus !== "new") {
+      throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
+    }
+
     return this.purchaseRequestsRepository.transaction(async (tx) => {
-      const item =
-        await this.purchaseRequestsRepository.getItemWithRequestForRemoval(
-          itemId,
-          tx,
-        );
-
-      if (!item) {
-        throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
-      }
-
-      this.assertCanUpdatePurchaseRequest(user, item.requesterId);
-
-      if (item.purchaseRequestStatus !== "new") {
-        throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
-      }
-
       const removedItem =
         await this.purchaseRequestsRepository.deleteItemForOpenRequest(
           item.id,
@@ -164,10 +194,15 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       }
 
       if (removedItem.storeInventoryId != null) {
-        await this.inventoriesService.releaseReservedStock(
+        const released = await this.inventoriesRepository.releaseReservedStock(
           removedItem.storeInventoryId,
           removedItem.qty,
+          tx,
         );
+
+        if (released.length === 0) {
+          throwHttpError(HttpStatus.CONFLICT, "Stock reservation conflict");
+        }
       }
 
       const remaining =
@@ -201,38 +236,37 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async confirm(user: AuthenticatedUser, id: number) {
-    return this.purchaseRequestsRepository.transaction(async (tx) => {
-      const request = await this.purchaseRequestsRepository.findById(id, tx);
+    const request = await this.purchaseRequestsRepository.findById(id);
 
-      if (!request) {
-        throwHttpError(
-          HttpStatus.CONFLICT,
-          "Purchase request is invalid, expired, or already processed",
-        );
-      }
-
-      this.assertCanUpdatePurchaseRequest(user, request.requesterId);
-
-      if (
-        request.status !== "new" ||
-        request.expiresAt == null ||
-        request.expiresAt <= new Date()
-      ) {
-        throwHttpError(
-          HttpStatus.CONFLICT,
-          "Purchase request is invalid, expired, or already processed",
-        );
-      }
-
-      const items = await this.purchaseRequestsRepository.listItemsByRequestId(
-        request.id,
-        tx,
+    if (!request) {
+      throwHttpError(
+        HttpStatus.CONFLICT,
+        "Purchase request is invalid, expired, or already processed",
       );
+    }
 
-      if (items.length === 0) {
-        throwHttpError(HttpStatus.BAD_REQUEST, "Purchase request has no items");
-      }
+    this.assertPurchaseRequestCasl(user, request.requesterId, Action.Update);
 
+    if (
+      request.status !== "new" ||
+      request.expiresAt == null ||
+      request.expiresAt <= new Date()
+    ) {
+      throwHttpError(
+        HttpStatus.CONFLICT,
+        "Purchase request is invalid, expired, or already processed",
+      );
+    }
+
+    const items = await this.purchaseRequestsRepository.listItemsByRequestId(
+      request.id,
+    );
+
+    if (items.length === 0) {
+      throwHttpError(HttpStatus.BAD_REQUEST, "Purchase request has no items");
+    }
+
+    return this.purchaseRequestsRepository.transaction(async (tx) => {
       const invoiceNumber = `INV-${Date.now()}-${request.id}`;
 
       const invoice = await this.purchaseRequestsRepository.createInvoice(
@@ -266,12 +300,23 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
           throwHttpError(HttpStatus.CONFLICT, "Inventory linkage missing");
         }
 
-        await this.inventoriesService.consumeReservedStockAtomic(
-          tx,
+        const consumed = await this.inventoriesRepository.consumeReservedStock(
           item.storeInventoryId,
           item.qty,
+          tx,
+        );
+
+        if (consumed.length === 0) {
+          throwHttpError(HttpStatus.CONFLICT, "Insufficient stock for sale");
+        }
+
+        await this.storeInventoryTransactionsRepository.create(
+          item.storeInventoryId,
+          -item.qty,
+          "sale",
           `invoice:${invoice.id}`,
           user.id,
+          tx,
         );
       }
 
@@ -282,33 +327,37 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async cancel(user: AuthenticatedUser, id: number) {
+    const request = await this.purchaseRequestsRepository.findById(id);
+
+    if (!request) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");
+    }
+
+    this.assertPurchaseRequestCasl(user, request.requesterId, Action.Update);
+
+    if (request.status !== "new") {
+      throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");
+    }
+
+    const items = await this.purchaseRequestsRepository.listItemsByRequestId(
+      request.id,
+    );
+
     return this.purchaseRequestsRepository.transaction(async (tx) => {
-      const request = await this.purchaseRequestsRepository.findById(id, tx);
-
-      if (!request) {
-        throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");
-      }
-
-      this.assertCanUpdatePurchaseRequest(user, request.requesterId);
-
-      if (request.status !== "new") {
-        throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");
-      }
-
-      const items = await this.purchaseRequestsRepository.listItemsByRequestId(
-        request.id,
-        tx,
-      );
-
       for (const item of items) {
         if (item.storeInventoryId == null) {
           continue;
         }
 
-        await this.inventoriesService.releaseReservedStock(
+        const released = await this.inventoriesRepository.releaseReservedStock(
           item.storeInventoryId,
           item.qty,
+          tx,
         );
+
+        if (released.length === 0) {
+          throwHttpError(HttpStatus.CONFLICT, "Stock reservation conflict");
+        }
       }
 
       await this.purchaseRequestsRepository.setRequestCancelled(request.id, tx);
@@ -336,6 +385,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
             await this.purchaseRequestsRepository.findExpiredOpenById(
               request.id,
               new Date(),
+              true,
               tx,
             );
 
@@ -354,10 +404,16 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
               continue;
             }
 
-            await this.inventoriesService.releaseReservedStock(
-              item.storeInventoryId,
-              item.qty,
-            );
+            const released =
+              await this.inventoriesRepository.releaseReservedStock(
+                item.storeInventoryId,
+                item.qty,
+                tx,
+              );
+
+            if (released.length === 0) {
+              throwHttpError(HttpStatus.CONFLICT, "Stock reservation conflict");
+            }
           }
 
           await this.purchaseRequestsRepository.setRequestExpired(
@@ -368,24 +424,6 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       }
     } finally {
       this.isRunningExpiry = false;
-    }
-  }
-
-  private assertCanUpdatePurchaseRequest(
-    user: AuthenticatedUser,
-    requesterId: number,
-  ) {
-    const ability = this.caslAbilityFactory.createForUser(user);
-    const canUpdatePurchaseRequest = ability.can(
-      Action.Update,
-      subject("PurchaseRequest", { requesterId }),
-    );
-
-    if (!canUpdatePurchaseRequest) {
-      throwHttpError(
-        HttpStatus.FORBIDDEN,
-        "You do not have permission for this action",
-      );
     }
   }
 }

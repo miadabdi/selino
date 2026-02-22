@@ -1,8 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
-import type { SendNotificationOptions } from "./interfaces/send-notification.interface.js";
-import { NotificationRepository } from "./notification.repository.js";
-import { DeliveryStatus } from "./notification.enums.js";
-import { NotificationProducer } from "./notification.producer.js";
+import type { SendNotificationOptions } from "./interfaces/send-notification.interface";
+import { DeliveryStatus } from "./notification.enums";
+import { NotificationProducer } from "./notification.producer";
+import { NotificationRepository } from "./notification.repository";
 
 @Injectable()
 export class NotificationService {

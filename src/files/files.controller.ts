@@ -15,9 +15,9 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
-import { UploadIntentDto } from "./dto/index.js";
-import { FilesService } from "./files.service.js";
-import { FileResponse, UploadIntentResponse } from "./responses/index.js";
+import { UploadIntentDto } from "./dto/index";
+import { FilesService } from "./files.service";
+import { FileResponse, UploadIntentResponse } from "./responses/index";
 
 @ApiTags("Files")
 @Controller("files")

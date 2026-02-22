@@ -1,4 +1,4 @@
-import type { NotificationChannel } from "../notification.enums.js";
+import type { NotificationChannel } from "../notification.enums";
 
 /**
  * Payload published to the notification RabbitMQ queue.

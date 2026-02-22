@@ -5,11 +5,11 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import type { User } from "../database/schema/index.js";
-import { OtpService } from "../otp/otp.service.js";
-import { UsersService } from "../users/users.service.js";
-import type { JwtPayload } from "./interfaces/jwt-payload.interface.js";
-import { RefreshTokenService } from "./refresh-token.service.js";
+import type { User } from "../database/schema/index";
+import { OtpService } from "../otp/otp.service";
+import { UsersService } from "../users/users.service";
+import type { JwtPayload } from "./interfaces/jwt-payload.interface";
+import { RefreshTokenService } from "./refresh-token.service";
 
 export interface AuthTokens {
   accessToken: string;

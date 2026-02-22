@@ -1,6 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { IsIn, IsInt, IsNotEmpty, IsString, Min } from "class-validator";
-import { BUCKET_KEYS, type BucketKey } from "../../storage/index.js";
+import { BUCKET_KEYS, type BucketKey } from "../../storage/index";
 
 export class UploadIntentDto {
   @ApiProperty({

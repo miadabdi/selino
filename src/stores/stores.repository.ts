@@ -1,8 +1,8 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { and, eq, isNull } from "drizzle-orm";
-import { AbstractRepository } from "../common/abstract.repository.js";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database, DBContext } from "../database/database.types.js";
+import { AbstractRepository } from "../common/abstract.repository";
+import { DATABASE } from "../database/database.constants";
+import type { Database, DBContext } from "../database/database.types";
 import {
   storeMembers,
   stores,
@@ -10,8 +10,8 @@ import {
   type NewStoreMember,
   type Store,
   type StoreMemberRole,
-} from "../database/schema/index.js";
-import type { UpdateStoreDto } from "./dto/update-store.dto.js";
+} from "../database/schema/index";
+import type { UpdateStoreDto } from "./dto/update-store.dto";
 
 @Injectable()
 export class StoresRepository extends AbstractRepository {

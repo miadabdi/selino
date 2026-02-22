@@ -1,4 +1,4 @@
-import { NotificationChannel } from "../notification.enums.js";
+import { NotificationChannel } from "../notification.enums";
 
 /**
  * Options for sending a notification.

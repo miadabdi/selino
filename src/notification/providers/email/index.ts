@@ -1,5 +1,2 @@
-export {
-  EmailProvider,
-  type EmailSendResult,
-} from "./email-provider.abstract.js";
-export { SmtpEmailProvider } from "./smtp-email.provider.js";
+export { EmailProvider, type EmailSendResult } from "./email-provider.abstract";
+export { SmtpEmailProvider } from "./smtp-email.provider";

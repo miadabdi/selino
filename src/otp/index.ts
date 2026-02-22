@@ -1,3 +1,3 @@
-export { OtpModule } from "./otp.module.js";
-export { OtpRepository } from "./otp.repository.js";
-export { OtpService } from "./otp.service.js";
+export { OtpModule } from "./otp.module";
+export { OtpRepository } from "./otp.repository";
+export { OtpService } from "./otp.service";

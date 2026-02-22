@@ -1,4 +1,4 @@
-export { PurchaseRequestsController } from "./purchase-requests.controller.js";
-export { PurchaseRequestsModule } from "./purchase-requests.module.js";
-export { PurchaseRequestsRepository } from "./purchase-requests.repository.js";
-export { PurchaseRequestsService } from "./purchase-requests.service.js";
+export { PurchaseRequestsController } from "./purchase-requests.controller";
+export { PurchaseRequestsModule } from "./purchase-requests.module";
+export { PurchaseRequestsRepository } from "./purchase-requests.repository";
+export { PurchaseRequestsService } from "./purchase-requests.service";

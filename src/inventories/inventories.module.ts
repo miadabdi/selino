@@ -1,9 +1,9 @@
 import { Module } from "@nestjs/common";
-import { InventoriesController } from "./inventories.controller.js";
-import { InventoriesRepository } from "./inventories.repository.js";
-import { InventoriesService } from "./inventories.service.js";
-import { StoreInventoryTransactionsRepository } from "./store-inventory-transactions.repository.js";
-import { StoreInventoryTransactionsService } from "./store-inventory-transactions.service.js";
+import { InventoriesController } from "./inventories.controller";
+import { InventoriesRepository } from "./inventories.repository";
+import { InventoriesService } from "./inventories.service";
+import { StoreInventoryTransactionsRepository } from "./store-inventory-transactions.repository";
+import { StoreInventoryTransactionsService } from "./store-inventory-transactions.service";
 
 @Module({
   imports: [],

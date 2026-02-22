@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { CreateStoreDto } from "./create-store.dto.js";
+import { CreateStoreDto } from "./create-store.dto";
 
 export class CreateStoreBody extends CreateStoreDto {
   @ApiPropertyOptional({

@@ -1,11 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
-import { AbstractRepository } from "../common/abstract.repository.js";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database, DBContext } from "../database/database.types.js";
-import { storeInventories } from "../database/schema/index.js";
-import type { CreateInventoryDto } from "./dto/create-inventory.dto.js";
-import type { UpdateInventoryDto } from "./dto/update-inventory.dto.js";
+import { AbstractRepository } from "../common/abstract.repository";
+import { DATABASE } from "../database/database.constants";
+import type { Database, DBContext } from "../database/database.types";
+import { storeInventories } from "../database/schema/index";
+import type { CreateInventoryDto } from "./dto/create-inventory.dto";
+import type { UpdateInventoryDto } from "./dto/update-inventory.dto";
 
 @Injectable()
 export class InventoriesRepository extends AbstractRepository {

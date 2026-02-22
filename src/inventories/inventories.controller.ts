@@ -11,13 +11,13 @@ import {
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
-import type { AuthenticatedUser } from "../auth/interfaces/index.js";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
-import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
-import { CreateInventoryDto } from "./dto/create-inventory.dto.js";
-import { RestockInventoryDto } from "./dto/restock-inventory.dto.js";
-import { UpdateInventoryDto } from "./dto/update-inventory.dto.js";
-import { InventoriesService } from "./inventories.service.js";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard";
+import type { AuthenticatedUser } from "../auth/interfaces/index";
+import { CreateInventoryDto } from "./dto/create-inventory.dto";
+import { RestockInventoryDto } from "./dto/restock-inventory.dto";
+import { UpdateInventoryDto } from "./dto/update-inventory.dto";
+import { InventoriesService } from "./inventories.service";
 
 @ApiTags("Store Inventories")
 @ApiBearerAuth()

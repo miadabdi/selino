@@ -1,8 +1,8 @@
 import { Module } from "@nestjs/common";
-import { InventoriesModule } from "../inventories/inventories.module.js";
-import { PurchaseRequestsController } from "./purchase-requests.controller.js";
-import { PurchaseRequestsRepository } from "./purchase-requests.repository.js";
-import { PurchaseRequestsService } from "./purchase-requests.service.js";
+import { InventoriesModule } from "../inventories/inventories.module";
+import { PurchaseRequestsController } from "./purchase-requests.controller";
+import { PurchaseRequestsRepository } from "./purchase-requests.repository";
+import { PurchaseRequestsService } from "./purchase-requests.service";
 
 @Module({
   imports: [InventoriesModule],

@@ -4,9 +4,9 @@ import {
   createMongoAbility,
 } from "@casl/ability";
 import { Injectable } from "@nestjs/common";
-import { MANAGING_STORE_MEMBER_ROLES } from "../../database/index.js";
-import type { AuthenticatedUser } from "../interfaces/index.js";
-import { Action } from "./actions.enum.js";
+import { MANAGING_STORE_MEMBER_ROLES } from "../../database/index";
+import type { AuthenticatedUser } from "../interfaces/index";
+import { Action } from "./actions.enum";
 
 export type AppAbility = AnyMongoAbility;
 

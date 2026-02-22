@@ -11,13 +11,13 @@ import {
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
-import { GetUser } from "../auth/decorators/get-user.decorator.js";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
-import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
-import type { AuthenticatedUser } from "../auth/interfaces/index.js";
-import { BrandsService } from "./brands.service.js";
-import { CreateBrandDto } from "./dto/create-brand.dto.js";
-import { UpdateBrandDto } from "./dto/update-brand.dto.js";
+import { GetUser } from "../auth/decorators/get-user.decorator";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard";
+import type { AuthenticatedUser } from "../auth/interfaces/index";
+import { BrandsService } from "./brands.service";
+import { CreateBrandDto } from "./dto/create-brand.dto";
+import { UpdateBrandDto } from "./dto/update-brand.dto";
 
 @ApiTags("Brands")
 @ApiBearerAuth()

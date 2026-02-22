@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
-import type { StockReason } from "../common/stock-reasons.js";
-import { StoreInventoryTransactionsRepository } from "./store-inventory-transactions.repository.js";
+import type { StockReason } from "../common/stock-reasons";
+import { StoreInventoryTransactionsRepository } from "./store-inventory-transactions.repository";
 
 @Injectable()
 export class StoreInventoryTransactionsService {

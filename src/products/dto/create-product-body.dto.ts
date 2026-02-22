@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { CreateProductDto } from "./create-product.dto.js";
+import { CreateProductDto } from "./create-product.dto";
 
 export class CreateProductBody extends CreateProductDto {
   @ApiPropertyOptional({

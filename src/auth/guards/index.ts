@@ -1,3 +1,3 @@
-export { GoogleAuthGuard } from "./google-auth.guard.js";
-export { JwtAuthGuard } from "./jwt-auth.guard.js";
-export { UserEnrichmentGuard } from "./user-enrichment.guard.js";
+export { GoogleAuthGuard } from "./google-auth.guard";
+export { JwtAuthGuard } from "./jwt-auth.guard";
+export { UserEnrichmentGuard } from "./user-enrichment.guard";

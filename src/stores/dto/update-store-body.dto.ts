@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { UpdateStoreDto } from "./update-store.dto.js";
+import { UpdateStoreDto } from "./update-store.dto";
 
 export class UpdateStoreBody extends UpdateStoreDto {
   @ApiPropertyOptional({

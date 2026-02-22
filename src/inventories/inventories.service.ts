@@ -1,13 +1,13 @@
 import { subject } from "@casl/ability";
 import { HttpStatus, Injectable } from "@nestjs/common";
-import { Action, CaslAbilityFactory } from "../auth/casl/index.js";
-import type { AuthenticatedUser } from "../auth/interfaces/index.js";
-import { throwHttpError } from "../common/http-error.js";
-import { CreateInventoryDto } from "./dto/create-inventory.dto.js";
-import { RestockInventoryDto } from "./dto/restock-inventory.dto.js";
-import { UpdateInventoryDto } from "./dto/update-inventory.dto.js";
-import { InventoriesRepository } from "./inventories.repository.js";
-import { StoreInventoryTransactionsService } from "./store-inventory-transactions.service.js";
+import { Action, CaslAbilityFactory } from "../auth/casl/index";
+import type { AuthenticatedUser } from "../auth/interfaces/index";
+import { throwHttpError } from "../common/http-error";
+import { CreateInventoryDto } from "./dto/create-inventory.dto";
+import { RestockInventoryDto } from "./dto/restock-inventory.dto";
+import { UpdateInventoryDto } from "./dto/update-inventory.dto";
+import { InventoriesRepository } from "./inventories.repository";
+import { StoreInventoryTransactionsService } from "./store-inventory-transactions.service";
 
 @Injectable()
 export class InventoriesService {

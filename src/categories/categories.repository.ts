@@ -1,15 +1,15 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { and, asc, eq, isNull } from "drizzle-orm";
-import { AbstractRepository } from "../common/abstract.repository.js";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database, DBContext } from "../database/database.types.js";
+import { AbstractRepository } from "../common/abstract.repository";
+import { DATABASE } from "../database/database.constants";
+import type { Database, DBContext } from "../database/database.types";
 import {
   categories,
   type Category,
   type CategorySpecSchema,
   type NewCategory,
-} from "../database/schema/index.js";
-import type { UpdateCategoryDto } from "./dto/update-category.dto.js";
+} from "../database/schema/index";
+import type { UpdateCategoryDto } from "./dto/update-category.dto";
 
 @Injectable()
 export class CategoriesRepository extends AbstractRepository {

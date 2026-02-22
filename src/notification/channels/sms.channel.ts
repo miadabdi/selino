@@ -2,8 +2,8 @@ import { Injectable } from "@nestjs/common";
 import {
   NotificationChannelHandler,
   type ChannelSendResult,
-} from "../interfaces/notification-channel.interface.js";
-import { SmsProvider } from "../providers/sms/sms-provider.abstract.js";
+} from "../interfaces/notification-channel.interface";
+import { SmsProvider } from "../providers/sms/sms-provider.abstract";
 
 /**
  * SMS channel handler.

@@ -1,17 +1,17 @@
 import { subject } from "@casl/ability";
 import { HttpStatus, Injectable } from "@nestjs/common";
 import { eq, isNull, sql, type SQL } from "drizzle-orm";
-import { Action, CaslAbilityFactory } from "../auth/casl/index.js";
-import type { AuthenticatedUser } from "../auth/interfaces/index.js";
-import { CategoriesService } from "../categories/categories.service.js";
-import { throwHttpError } from "../common/http-error.js";
-import { products, type CategorySpecSchema } from "../database/schema/index.js";
-import { FilesService } from "../files/files.service.js";
-import { AddProductImageDto } from "./dto/add-product-image.dto.js";
-import { CreateProductDto } from "./dto/create-product.dto.js";
-import { ReorderProductImagesDto } from "./dto/reorder-product-images.dto.js";
-import { UpdateProductDto } from "./dto/update-product.dto.js";
-import { ProductsRepository } from "./products.repository.js";
+import { Action, CaslAbilityFactory } from "../auth/casl/index";
+import type { AuthenticatedUser } from "../auth/interfaces/index";
+import { CategoriesService } from "../categories/categories.service";
+import { throwHttpError } from "../common/http-error";
+import { products, type CategorySpecSchema } from "../database/schema/index";
+import { FilesService } from "../files/files.service";
+import { AddProductImageDto } from "./dto/add-product-image.dto";
+import { CreateProductDto } from "./dto/create-product.dto";
+import { ReorderProductImagesDto } from "./dto/reorder-product-images.dto";
+import { UpdateProductDto } from "./dto/update-product.dto";
+import { ProductsRepository } from "./products.repository";
 
 @Injectable()
 export class ProductsService {

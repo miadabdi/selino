@@ -1,13 +1,13 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { and, eq } from "drizzle-orm";
-import { AbstractRepository } from "../common/abstract.repository.js";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database, DBContext } from "../database/database.types.js";
+import { AbstractRepository } from "../common/abstract.repository";
+import { DATABASE } from "../database/database.constants";
+import type { Database, DBContext } from "../database/database.types";
 import {
   refreshTokens,
   type NewRefreshToken,
   type RefreshToken,
-} from "../database/schema/index.js";
+} from "../database/schema/index";
 
 @Injectable()
 export class RefreshTokenRepository extends AbstractRepository {

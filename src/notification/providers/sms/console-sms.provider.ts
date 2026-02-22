@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { SmsProvider, type SmsSendResult } from "./sms-provider.abstract.js";
+import { SmsProvider, type SmsSendResult } from "./sms-provider.abstract";
 
 /**
  * Console-based SMS provider for development / testing.

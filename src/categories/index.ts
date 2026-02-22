@@ -1,4 +1,4 @@
-export { CategoriesController } from "./categories.controller.js";
-export { CategoriesModule } from "./categories.module.js";
-export { CategoriesRepository } from "./categories.repository.js";
-export { CategoriesService } from "./categories.service.js";
+export { CategoriesController } from "./categories.controller";
+export { CategoriesModule } from "./categories.module";
+export { CategoriesRepository } from "./categories.repository";
+export { CategoriesService } from "./categories.service";

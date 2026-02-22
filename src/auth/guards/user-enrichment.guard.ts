@@ -4,7 +4,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from "@nestjs/common";
-import { UsersService } from "../../users/users.service.js";
+import { UsersService } from "../../users/users.service";
 
 @Injectable()
 export class UserEnrichmentGuard implements CanActivate {

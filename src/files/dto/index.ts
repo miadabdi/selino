@@ -1,1 +1,1 @@
-export { UploadIntentDto } from "./upload-intent.dto.js";
+export { UploadIntentDto } from "./upload-intent.dto";

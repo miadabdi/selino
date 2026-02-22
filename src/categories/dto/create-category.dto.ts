@@ -7,7 +7,7 @@ import {
   IsString,
   MaxLength,
 } from "class-validator";
-import type { CategorySpecSchema } from "../../database/schema/categories.schema.js";
+import type { CategorySpecSchema } from "../../database/schema/categories.schema";
 
 export class CreateCategoryDto {
   @ApiPropertyOptional()

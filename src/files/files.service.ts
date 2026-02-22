@@ -8,18 +8,15 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { extname } from "path";
 import { v4 as uuidv4 } from "uuid";
-import {
-  type FileRecord,
-  type NewFileRecord,
-} from "../database/schema/index.js";
+import { type FileRecord, type NewFileRecord } from "../database/schema/index";
 import {
   STORAGE_BUCKETS,
   STORAGE_PROVIDER,
   type BucketKey,
   type StorageBucketsConfig,
   type StorageProvider,
-} from "../storage/index.js";
-import { FilesRepository } from "./files.repository.js";
+} from "../storage/index";
+import { FilesRepository } from "./files.repository";
 
 @Injectable()
 export class FilesService {

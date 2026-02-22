@@ -1,4 +1,4 @@
-import type { Database, DBContext } from "../database/database.types.js";
+import type { Database, DBContext } from "../database/database.types";
 
 export abstract class AbstractRepository {
   protected constructor(protected readonly db: Database) {}

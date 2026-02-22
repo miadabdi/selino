@@ -4,8 +4,8 @@ import { createHash, randomBytes } from "crypto";
 import {
   type NewRefreshToken,
   type RefreshToken,
-} from "../database/schema/index.js";
-import { RefreshTokenRepository } from "./refresh-token.repository.js";
+} from "../database/schema/index";
+import { RefreshTokenRepository } from "./refresh-token.repository";
 
 type RefreshTokenRevokedReason = NonNullable<NewRefreshToken["revokedReason"]>;
 

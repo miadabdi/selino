@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import Kavenegar from "kavenegar";
-import { SmsProvider, type SmsSendResult } from "./sms-provider.abstract.js";
+import { SmsProvider, type SmsSendResult } from "./sms-provider.abstract";
 
 /**
  * Kavenegar SMS provider.

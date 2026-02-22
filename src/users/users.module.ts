@@ -1,11 +1,11 @@
 import { Global, Module } from "@nestjs/common";
-import { FilesModule } from "../files/files.module.js";
+import { FilesModule } from "../files/files.module";
 import {
   ProfilePictureUploadInterceptor,
   UsersController,
-} from "./users.controller.js";
-import { UsersRepository } from "./users.repository.js";
-import { UsersService } from "./users.service.js";
+} from "./users.controller";
+import { UsersRepository } from "./users.repository";
+import { UsersService } from "./users.service";
 
 @Global()
 @Module({

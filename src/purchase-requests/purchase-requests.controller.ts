@@ -11,11 +11,11 @@ import {
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
-import type { AuthenticatedUser } from "../auth/interfaces/index.js";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
-import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
-import { AddPurchaseRequestItemDto } from "./dto/add-purchase-request-item.dto.js";
-import { PurchaseRequestsService } from "./purchase-requests.service.js";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard";
+import type { AuthenticatedUser } from "../auth/interfaces/index";
+import { AddPurchaseRequestItemDto } from "./dto/add-purchase-request-item.dto";
+import { PurchaseRequestsService } from "./purchase-requests.service";
 
 @ApiTags("Purchase Requests")
 @ApiBearerAuth()

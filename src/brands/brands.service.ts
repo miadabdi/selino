@@ -1,12 +1,12 @@
 import { subject } from "@casl/ability";
 import { HttpStatus, Injectable } from "@nestjs/common";
-import { Action, CaslAbilityFactory } from "../auth/casl/index.js";
-import type { AuthenticatedUser } from "../auth/interfaces/index.js";
-import { throwHttpError } from "../common/http-error.js";
-import { generateUniqueSlug } from "../common/slug.js";
-import { BrandsRepository } from "./brands.repository.js";
-import { CreateBrandDto } from "./dto/create-brand.dto.js";
-import { UpdateBrandDto } from "./dto/update-brand.dto.js";
+import { Action, CaslAbilityFactory } from "../auth/casl/index";
+import type { AuthenticatedUser } from "../auth/interfaces/index";
+import { throwHttpError } from "../common/http-error";
+import { generateUniqueSlug } from "../common/slug";
+import { BrandsRepository } from "./brands.repository";
+import { CreateBrandDto } from "./dto/create-brand.dto";
+import { UpdateBrandDto } from "./dto/update-brand.dto";
 
 @Injectable()
 export class BrandsService {

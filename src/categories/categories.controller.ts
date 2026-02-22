@@ -12,13 +12,13 @@ import {
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
-import type { AuthenticatedUser } from "../auth/interfaces/index.js";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
-import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
-import { CategoriesService } from "./categories.service.js";
-import { CreateCategoryDto } from "./dto/create-category.dto.js";
-import { ReplaceSpecSchemaDto } from "./dto/replace-spec-schema.dto.js";
-import { UpdateCategoryDto } from "./dto/update-category.dto.js";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard";
+import type { AuthenticatedUser } from "../auth/interfaces/index";
+import { CategoriesService } from "./categories.service";
+import { CreateCategoryDto } from "./dto/create-category.dto";
+import { ReplaceSpecSchemaDto } from "./dto/replace-spec-schema.dto";
+import { UpdateCategoryDto } from "./dto/update-category.dto";
 
 @ApiTags("Categories")
 @ApiBearerAuth()

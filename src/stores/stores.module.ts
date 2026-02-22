@@ -1,11 +1,11 @@
 import { Module } from "@nestjs/common";
-import { FilesModule } from "../files/files.module.js";
+import { FilesModule } from "../files/files.module";
 import {
   StoreLogoUploadInterceptor,
   StoresController,
-} from "./stores.controller.js";
-import { StoresRepository } from "./stores.repository.js";
-import { StoresService } from "./stores.service.js";
+} from "./stores.controller";
+import { StoresRepository } from "./stores.repository";
+import { StoresService } from "./stores.service";
 
 @Module({
   imports: [FilesModule],

@@ -1,10 +1,10 @@
 import { subject } from "@casl/ability";
-import { Action } from "./actions.enum.js";
+import { Action } from "./actions.enum";
 import type {
   PolicyContext,
   PolicyHandler,
   ServiceToken,
-} from "./policies.decorator.js";
+} from "./policies.decorator";
 
 export interface CheckSubjectByParamOptions<
   TService,

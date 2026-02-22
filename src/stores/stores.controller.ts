@@ -1,6 +1,6 @@
 import {
-  CallHandler,
   Body,
+  CallHandler,
   Controller,
   Delete,
   ExecutionContext,
@@ -20,14 +20,14 @@ import { ConfigService } from "@nestjs/config";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
-import { imageFileFilter } from "../files/image-file-filter.js";
-import { AddStoreMemberDto } from "./dto/add-store-member.dto.js";
-import { CreateStoreBody } from "./dto/create-store-body.dto.js";
-import { CreateStoreDto } from "./dto/create-store.dto.js";
-import { UpdateStoreBody } from "./dto/update-store-body.dto.js";
-import { UpdateStoreDto } from "./dto/update-store.dto.js";
-import { StoresService } from "./stores.service.js";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { imageFileFilter } from "../files/image-file-filter";
+import { AddStoreMemberDto } from "./dto/add-store-member.dto";
+import { CreateStoreBody } from "./dto/create-store-body.dto";
+import { CreateStoreDto } from "./dto/create-store.dto";
+import { UpdateStoreBody } from "./dto/update-store-body.dto";
+import { UpdateStoreDto } from "./dto/update-store.dto";
+import { StoresService } from "./stores.service";
 
 @Injectable()
 export class StoreLogoUploadInterceptor implements NestInterceptor {

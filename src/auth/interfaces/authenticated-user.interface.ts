@@ -1,4 +1,4 @@
-import type { StoreMember, User } from "../../database/schema/index.js";
+import type { StoreMember, User } from "../../database/schema/index";
 
 export type AuthenticatedStoreMembership = StoreMember;
 

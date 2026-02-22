@@ -1,5 +1,5 @@
 import type { ConfigService } from "@nestjs/config";
-import type { BucketConfig } from "./interfaces/index.js";
+import type { BucketConfig } from "./interfaces/index";
 
 /**
  * Static bucket keys — these never change at runtime and are safe to use

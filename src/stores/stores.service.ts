@@ -3,13 +3,13 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { generateUniqueSlug } from "../common/slug.js";
-import { StoreMemberRole } from "../database/schema/index.js";
-import { FilesService } from "../files/files.service.js";
-import { AddStoreMemberDto } from "./dto/add-store-member.dto.js";
-import { CreateStoreDto } from "./dto/create-store.dto.js";
-import { UpdateStoreDto } from "./dto/update-store.dto.js";
-import { StoresRepository } from "./stores.repository.js";
+import { generateUniqueSlug } from "../common/slug";
+import { StoreMemberRole } from "../database/schema/index";
+import { FilesService } from "../files/files.service";
+import { AddStoreMemberDto } from "./dto/add-store-member.dto";
+import { CreateStoreDto } from "./dto/create-store.dto";
+import { UpdateStoreDto } from "./dto/update-store.dto";
+import { StoresRepository } from "./stores.repository";
 
 @Injectable()
 export class StoresService {

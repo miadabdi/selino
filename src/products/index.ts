@@ -1,4 +1,4 @@
-export { ProductsController } from "./products.controller.js";
-export { ProductsModule } from "./products.module.js";
-export { ProductsRepository } from "./products.repository.js";
-export { ProductsService } from "./products.service.js";
+export { ProductsController } from "./products.controller";
+export { ProductsModule } from "./products.module";
+export { ProductsRepository } from "./products.repository";
+export { ProductsService } from "./products.service";

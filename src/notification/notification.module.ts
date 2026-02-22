@@ -1,20 +1,20 @@
 import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { EmailChannelHandler } from "./channels/email.channel.js";
-import { SmsChannelHandler } from "./channels/sms.channel.js";
-import type { NotificationChannelHandler } from "./interfaces/notification-channel.interface.js";
-import { NOTIFICATION_CHANNELS } from "./notification.constants.js";
-import { NotificationConsumer } from "./notification.consumer.js";
-import { NotificationChannel } from "./notification.enums.js";
-import { NotificationRepository } from "./notification.repository.js";
-import { NotificationProducer } from "./notification.producer.js";
-import { NotificationService } from "./notification.service.js";
-import { EmailProvider } from "./providers/email/email-provider.abstract.js";
-import { SmtpEmailProvider } from "./providers/email/smtp-email.provider.js";
-import { ConsoleSmsProvider } from "./providers/sms/console-sms.provider.js";
-import { KavenegarSmsProvider } from "./providers/sms/kavenegar-sms.provider.js";
-import { SmsProvider } from "./providers/sms/sms-provider.abstract.js";
-import { SmsirSmsProvider } from "./providers/sms/smsir-sms.provider.js";
+import { EmailChannelHandler } from "./channels/email.channel";
+import { SmsChannelHandler } from "./channels/sms.channel";
+import type { NotificationChannelHandler } from "./interfaces/notification-channel.interface";
+import { NOTIFICATION_CHANNELS } from "./notification.constants";
+import { NotificationConsumer } from "./notification.consumer";
+import { NotificationChannel } from "./notification.enums";
+import { NotificationProducer } from "./notification.producer";
+import { NotificationRepository } from "./notification.repository";
+import { NotificationService } from "./notification.service";
+import { EmailProvider } from "./providers/email/email-provider.abstract";
+import { SmtpEmailProvider } from "./providers/email/smtp-email.provider";
+import { ConsoleSmsProvider } from "./providers/sms/console-sms.provider";
+import { KavenegarSmsProvider } from "./providers/sms/kavenegar-sms.provider";
+import { SmsProvider } from "./providers/sms/sms-provider.abstract";
+import { SmsirSmsProvider } from "./providers/sms/smsir-sms.provider";
 
 @Module({
   providers: [

@@ -7,14 +7,14 @@ import {
 } from "@nestjs/common";
 import { ModuleRef, Reflector } from "@nestjs/core";
 import type { Request } from "express";
-import type { AuthenticatedUser } from "../interfaces/index.js";
-import { CaslAbilityFactory } from "./casl-ability.factory.js";
+import type { AuthenticatedUser } from "../interfaces/index";
+import { CaslAbilityFactory } from "./casl-ability.factory";
 import {
   CHECK_POLICIES_KEY,
   type PolicyContext,
   type PolicyHandler,
   type ServiceToken,
-} from "./policies.decorator.js";
+} from "./policies.decorator";
 
 @Injectable()
 export class PoliciesGuard implements CanActivate {

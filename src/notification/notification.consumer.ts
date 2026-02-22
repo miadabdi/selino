@@ -1,15 +1,15 @@
 import { RabbitSubscribe } from "@golevelup/nestjs-rabbitmq";
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import type { NotificationChannelHandler } from "./interfaces/notification-channel.interface.js";
-import type { NotificationJobPayload } from "./interfaces/notification-job.interface.js";
+import type { NotificationChannelHandler } from "./interfaces/notification-channel.interface";
+import type { NotificationJobPayload } from "./interfaces/notification-job.interface";
 import {
   NOTIFICATION_CHANNELS,
   NOTIFICATION_EXCHANGE,
   NOTIFICATION_QUEUE_EMAIL,
   NOTIFICATION_QUEUE_SMS,
-} from "./notification.constants.js";
-import { NotificationRepository } from "./notification.repository.js";
-import { DeliveryStatus, NotificationChannel } from "./notification.enums.js";
+} from "./notification.constants";
+import { DeliveryStatus, NotificationChannel } from "./notification.enums";
+import { NotificationRepository } from "./notification.repository";
 
 /**
  * Consumes notification jobs from RabbitMQ queues and dispatches them

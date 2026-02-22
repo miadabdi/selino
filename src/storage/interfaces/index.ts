@@ -1,5 +1,5 @@
 export type {
   BucketConfig,
   PresignedPutOptions,
-} from "./bucket-config.interface.js";
-export type { StorageProvider } from "./storage-provider.interface.js";
+} from "./bucket-config.interface";
+export type { StorageProvider } from "./storage-provider.interface";

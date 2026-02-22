@@ -1,4 +1,4 @@
-export { StoresController } from "./stores.controller.js";
-export { StoresModule } from "./stores.module.js";
-export { StoresRepository } from "./stores.repository.js";
-export { StoresService } from "./stores.service.js";
+export { StoresController } from "./stores.controller";
+export { StoresModule } from "./stores.module";
+export { StoresRepository } from "./stores.repository";
+export { StoresService } from "./stores.service";

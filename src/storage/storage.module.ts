@@ -6,13 +6,13 @@ import {
   type OnModuleInit,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { StorageProvider } from "./interfaces/index.js";
-import { S3StorageProvider } from "./providers/s3-storage.provider.js";
+import type { StorageProvider } from "./interfaces/index";
+import { S3StorageProvider } from "./providers/s3-storage.provider";
 import {
   createStorageBucketsConfig,
   type StorageBucketsConfig,
-} from "./storage.config.js";
-import { STORAGE_BUCKETS, STORAGE_PROVIDER } from "./storage.constants.js";
+} from "./storage.config";
+import { STORAGE_BUCKETS, STORAGE_PROVIDER } from "./storage.constants";
 
 @Global()
 @Module({

@@ -6,12 +6,12 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Action, CaslAbilityFactory } from "../auth/casl/index.js";
-import type { AuthenticatedUser } from "../auth/interfaces/index.js";
-import { throwHttpError } from "../common/http-error.js";
-import { InventoriesService } from "../inventories/inventories.service.js";
-import { AddPurchaseRequestItemDto } from "./dto/add-purchase-request-item.dto.js";
-import { PurchaseRequestsRepository } from "./purchase-requests.repository.js";
+import { Action, CaslAbilityFactory } from "../auth/casl/index";
+import type { AuthenticatedUser } from "../auth/interfaces/index";
+import { throwHttpError } from "../common/http-error";
+import { InventoriesService } from "../inventories/inventories.service";
+import { AddPurchaseRequestItemDto } from "./dto/add-purchase-request-item.dto";
+import { PurchaseRequestsRepository } from "./purchase-requests.repository";
 
 @Injectable()
 export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {

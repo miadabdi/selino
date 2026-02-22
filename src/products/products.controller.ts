@@ -1,6 +1,6 @@
 import {
-  CallHandler,
   Body,
+  CallHandler,
   Controller,
   Delete,
   ExecutionContext,
@@ -21,17 +21,17 @@ import { ConfigService } from "@nestjs/config";
 import { FilesInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
-import type { AuthenticatedUser } from "../auth/interfaces/index.js";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
-import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
-import { imageFileFilter } from "../files/image-file-filter.js";
-import { AddProductImageDto } from "./dto/add-product-image.dto.js";
-import { CreateProductBody } from "./dto/create-product-body.dto.js";
-import { CreateProductDto } from "./dto/create-product.dto.js";
-import { ReorderProductImagesDto } from "./dto/reorder-product-images.dto.js";
-import { UpdateProductBody } from "./dto/update-product-body.dto.js";
-import { UpdateProductDto } from "./dto/update-product.dto.js";
-import { ProductsService } from "./products.service.js";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard";
+import type { AuthenticatedUser } from "../auth/interfaces/index";
+import { imageFileFilter } from "../files/image-file-filter";
+import { AddProductImageDto } from "./dto/add-product-image.dto";
+import { CreateProductBody } from "./dto/create-product-body.dto";
+import { CreateProductDto } from "./dto/create-product.dto";
+import { ReorderProductImagesDto } from "./dto/reorder-product-images.dto";
+import { UpdateProductBody } from "./dto/update-product-body.dto";
+import { UpdateProductDto } from "./dto/update-product.dto";
+import { ProductsService } from "./products.service";
 
 @Injectable()
 export class ProductPicturesUploadInterceptor implements NestInterceptor {

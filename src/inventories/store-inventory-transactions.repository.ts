@@ -1,10 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { asc, eq } from "drizzle-orm";
-import type { StockReason } from "../common/stock-reasons.js";
-import { AbstractRepository } from "../common/abstract.repository.js";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database, DBContext } from "../database/database.types.js";
-import { storeInventoryTransactions } from "../database/schema/index.js";
+import { AbstractRepository } from "../common/abstract.repository";
+import type { StockReason } from "../common/stock-reasons";
+import { DATABASE } from "../database/database.constants";
+import type { Database, DBContext } from "../database/database.types";
+import { storeInventoryTransactions } from "../database/schema/index";
 
 @Injectable()
 export class StoreInventoryTransactionsRepository extends AbstractRepository {

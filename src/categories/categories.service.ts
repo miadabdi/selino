@@ -1,17 +1,17 @@
 import { subject } from "@casl/ability";
 import { HttpStatus, Injectable } from "@nestjs/common";
-import { Action, CaslAbilityFactory } from "../auth/casl/index.js";
-import type { AuthenticatedUser } from "../auth/interfaces/index.js";
-import { throwHttpError } from "../common/http-error.js";
-import { generateUniqueSlug } from "../common/slug.js";
+import { Action, CaslAbilityFactory } from "../auth/casl/index";
+import type { AuthenticatedUser } from "../auth/interfaces/index";
+import { throwHttpError } from "../common/http-error";
+import { generateUniqueSlug } from "../common/slug";
 import {
   type Category,
   type CategorySpecSchema,
-} from "../database/schema/index.js";
-import { CategoriesRepository } from "./categories.repository.js";
-import { CreateCategoryDto } from "./dto/create-category.dto.js";
-import { ReplaceSpecSchemaDto } from "./dto/replace-spec-schema.dto.js";
-import { UpdateCategoryDto } from "./dto/update-category.dto.js";
+} from "../database/schema/index";
+import { CategoriesRepository } from "./categories.repository";
+import { CreateCategoryDto } from "./dto/create-category.dto";
+import { ReplaceSpecSchemaDto } from "./dto/replace-spec-schema.dto";
+import { UpdateCategoryDto } from "./dto/update-category.dto";
 
 @Injectable()
 export class CategoriesService {

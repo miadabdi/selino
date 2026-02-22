@@ -3,7 +3,7 @@ import { IsIn, IsInt } from "class-validator";
 import {
   StoreMemberRole,
   storeMemberRoleEnum,
-} from "../../database/schema/store-members.schema.js";
+} from "../../database/schema/store-members.schema";
 
 export class AddStoreMemberDto {
   @ApiProperty()

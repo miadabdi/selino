@@ -1,2 +1,2 @@
-export { EmailChannelHandler } from "./email.channel.js";
-export { SmsChannelHandler } from "./sms.channel.js";
+export { EmailChannelHandler } from "./email.channel";
+export { SmsChannelHandler } from "./sms.channel";

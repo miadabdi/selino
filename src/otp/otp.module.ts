@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
-import { NotificationModule } from "../notification/notification.module.js";
-import { OtpRepository } from "./otp.repository.js";
-import { OtpService } from "./otp.service.js";
+import { NotificationModule } from "../notification/notification.module";
+import { OtpRepository } from "./otp.repository";
+import { OtpService } from "./otp.service";
 
 @Module({
   imports: [NotificationModule],

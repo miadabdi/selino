@@ -1,16 +1,13 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { eq } from "drizzle-orm";
-import { AbstractRepository } from "../common/abstract.repository.js";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database, DBContext } from "../database/database.types.js";
+import { AbstractRepository } from "../common/abstract.repository";
+import { DATABASE } from "../database/database.constants";
+import type { Database, DBContext } from "../database/database.types";
 import {
   notificationDeliveries,
   notifications,
-} from "../database/schema/index.js";
-import type {
-  DeliveryStatus,
-  NotificationChannel,
-} from "./notification.enums.js";
+} from "../database/schema/index";
+import type { DeliveryStatus, NotificationChannel } from "./notification.enums";
 
 @Injectable()
 export class NotificationRepository extends AbstractRepository {

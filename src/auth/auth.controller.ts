@@ -18,21 +18,20 @@ import {
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
 import type { Request } from "express";
-import type { User } from "../database/schema/index.js";
-import { UserResponse } from "../users/dto/index.js";
-import { AuthService } from "./auth.service.js";
-import { GetUser } from "./decorators/index.js";
+import type { User } from "../database/schema/index";
+import { AuthService } from "./auth.service";
+import { GetUser } from "./decorators/index";
 import {
   RefreshTokenDto,
   SendEmailOtpDto,
   SendOtpDto,
   VerifyEmailOtpDto,
   VerifyOtpDto,
-} from "./dto/index.js";
-import { GoogleAuthGuard } from "./guards/google-auth.guard.js";
-import { JwtAuthGuard } from "./guards/jwt-auth.guard.js";
-import { UserEnrichmentGuard } from "./guards/user-enrichment.guard.js";
-import { AuthTokensResponse, MessageResponse } from "./responses/index.js";
+} from "./dto/index";
+import { GoogleAuthGuard } from "./guards/google-auth.guard";
+import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { UserEnrichmentGuard } from "./guards/user-enrichment.guard";
+import { AuthTokensResponse, MessageResponse } from "./responses/index";
 
 @ApiTags("Auth")
 @Controller("auth")
@@ -210,23 +209,5 @@ export class AuthController {
     const user = req.user as { id: number };
     await this.authService.logoutAll(user.id);
     return { message: "All sessions revoked" };
-  }
-
-  /**
-   * GET /auth/me
-   * Return the current authenticated user's info.
-   */
-  @Get("me")
-  @UseGuards(JwtAuthGuard, UserEnrichmentGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: "Get current user profile" })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: "Current authenticated user info",
-    type: UserResponse,
-  })
-  @ApiUnauthorizedResponse({ description: "Not authenticated" })
-  getProfile(@GetUser() user: User): UserResponse {
-    return user;
   }
 }

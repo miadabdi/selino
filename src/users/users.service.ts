@@ -1,12 +1,12 @@
 import { ConflictException, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import sharp from "sharp";
-import { AuthService } from "../auth/auth.service.js";
-import { AuthenticatedUser } from "../auth/interfaces/authenticated-user.interface.js";
-import { users, type NewUser, type User } from "../database/schema/index.js";
-import { FilesService } from "../files/files.service.js";
-import { UpdateUserDto } from "./dto/update-user.dto.js";
-import { UsersRepository } from "./users.repository.js";
+import { AuthService } from "../auth/auth.service";
+import { AuthenticatedUser } from "../auth/interfaces/authenticated-user.interface";
+import { users, type NewUser, type User } from "../database/schema/index";
+import { FilesService } from "../files/files.service";
+import { UpdateUserDto } from "./dto/update-user.dto";
+import { UsersRepository } from "./users.repository";
 
 @Injectable()
 export class UsersService {

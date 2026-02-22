@@ -1,8 +1,9 @@
 import {
-  CallHandler,
   Body,
+  CallHandler,
   Controller,
   ExecutionContext,
+  Get,
   HttpCode,
   HttpStatus,
   Injectable,
@@ -23,13 +24,18 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
-import { GetUser } from "../auth/decorators/index.js";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard.js";
-import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
-import type { AuthenticatedUser } from "../auth/interfaces/index.js";
-import { imageFileFilter } from "../files/index.js";
-import { UpdateProfileBody, UpdateUserDto, UserResponse } from "./dto/index.js";
-import { UsersService } from "./users.service.js";
+import { GetUser } from "../auth/decorators/index";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard";
+import type { AuthenticatedUser } from "../auth/interfaces/index";
+import { imageFileFilter } from "../files/index";
+import {
+  GetMeResponse,
+  UpdateProfileBody,
+  UpdateUserDto,
+  UserBase,
+} from "./dto/index";
+import { UsersService } from "./users.service";
 
 @Injectable()
 export class ProfilePictureUploadInterceptor implements NestInterceptor {
@@ -73,14 +79,32 @@ export class UsersController {
     status: HttpStatus.OK,
     description:
       "User updated successfully, email verification sent if email changed",
-    type: UserResponse,
+    type: UserBase,
   })
   @ApiUnauthorizedResponse({ description: "Not authenticated" })
   async updateProfile(
     @GetUser() user: AuthenticatedUser,
     @Body() dto: UpdateUserDto,
     @UploadedFile() profilePicture?: Express.Multer.File,
-  ): Promise<UserResponse> {
+  ): Promise<UserBase> {
     return await this.usersService.update(user.id, dto, profilePicture);
+  }
+
+  /**
+   * GET /users/me
+   * Return the current authenticated user's info.
+   */
+  @Get("me")
+  @UseGuards(JwtAuthGuard, UserEnrichmentGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get current user profile" })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: "Current authenticated user info",
+    type: GetMeResponse,
+  })
+  @ApiUnauthorizedResponse({ description: "Not authenticated" })
+  getProfile(@GetUser() user: AuthenticatedUser): AuthenticatedUser {
+    return user;
   }
 }

@@ -1,9 +1,9 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { and, eq, gt } from "drizzle-orm";
-import { AbstractRepository } from "../common/abstract.repository.js";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database, DBContext } from "../database/database.types.js";
-import { authOtps, type AuthOtp } from "../database/schema/index.js";
+import { AbstractRepository } from "../common/abstract.repository";
+import { DATABASE } from "../database/database.constants";
+import type { Database, DBContext } from "../database/database.types";
+import { authOtps, type AuthOtp } from "../database/schema/index";
 
 @Injectable()
 export class OtpRepository extends AbstractRepository {

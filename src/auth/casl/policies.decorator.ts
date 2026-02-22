@@ -1,7 +1,7 @@
-import { SetMetadata } from "@nestjs/common";
 import type { Type } from "@nestjs/common";
+import { SetMetadata } from "@nestjs/common";
 import type { Request } from "express";
-import type { AppAbility } from "./casl-ability.factory.js";
+import type { AppAbility } from "./casl-ability.factory";
 
 export const CHECK_POLICIES_KEY = "check_policy";
 

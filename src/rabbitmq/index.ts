@@ -1,1 +1,1 @@
-export { RabbitmqModule } from "./rabbitmq.module.js";
+export { RabbitmqModule } from "./rabbitmq.module";

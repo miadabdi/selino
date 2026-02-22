@@ -1,1 +1,1 @@
-export { GetUser } from "./get-user.decorator.js";
+export { GetUser } from "./get-user.decorator";

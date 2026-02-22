@@ -1,20 +1,20 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { validateEnv } from "./config/env.validation.js";
-import { AppController } from "./app.controller.js";
-import { AppService } from "./app.service.js";
-import { AuthModule } from "./auth/auth.module.js";
-import { BrandsModule } from "./brands/brands.module.js";
-import { CategoriesModule } from "./categories/categories.module.js";
-import { DatabaseModule } from "./database/database.module.js";
-import { FilesModule } from "./files/files.module.js";
-import { InventoriesModule } from "./inventories/inventories.module.js";
-import { ProductsModule } from "./products/products.module.js";
-import { PurchaseRequestsModule } from "./purchase-requests/purchase-requests.module.js";
-import { RabbitmqModule } from "./rabbitmq/rabbitmq.module.js";
-import { StorageModule } from "./storage/storage.module.js";
-import { StoresModule } from "./stores/stores.module.js";
-import { UsersModule } from "./users/users.module.js";
+import { AppController } from "./app.controller";
+import { AppService } from "./app.service";
+import { AuthModule } from "./auth/auth.module";
+import { BrandsModule } from "./brands/brands.module";
+import { CategoriesModule } from "./categories/categories.module";
+import { validateEnv } from "./config/env.validation";
+import { DatabaseModule } from "./database/database.module";
+import { FilesModule } from "./files/files.module";
+import { InventoriesModule } from "./inventories/inventories.module";
+import { ProductsModule } from "./products/products.module";
+import { PurchaseRequestsModule } from "./purchase-requests/purchase-requests.module";
+import { RabbitmqModule } from "./rabbitmq/rabbitmq.module";
+import { StorageModule } from "./storage/storage.module";
+import { StoresModule } from "./stores/stores.module";
+import { UsersModule } from "./users/users.module";
 
 @Module({
   imports: [

@@ -1,8 +1,8 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { NotificationChannel } from "../notification/notification.enums.js";
-import { NotificationService } from "../notification/notification.service.js";
-import { OtpRepository } from "./otp.repository.js";
+import { NotificationChannel } from "../notification/notification.enums";
+import { NotificationService } from "../notification/notification.service";
+import { OtpRepository } from "./otp.repository";
 
 @Injectable()
 export class OtpService {

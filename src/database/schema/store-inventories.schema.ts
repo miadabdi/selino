@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   AnyPgColumn,
   boolean,
@@ -34,6 +35,9 @@ export const storeInventories = pgTable(
     price: numeric("price", { mode: "number" }).notNull(),
     stock: integer("stock").notNull().default(0),
     reservedStock: integer("reserved_stock").notNull().default(0),
+    availableStock: integer("available_stock").generatedAlwaysAs(
+      sql`stock - reserved_stock`,
+    ),
     minOrderQty: integer("min_order_qty").notNull().default(1),
     maxOrderQty: integer("max_order_qty"),
     isActive: boolean("is_active").notNull().default(true),

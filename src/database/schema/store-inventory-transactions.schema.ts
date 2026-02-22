@@ -25,7 +25,9 @@ export const storeInventoryTransactions = pgTable(
 
     storeInventoryId: integer("store_inventory_id")
       .notNull()
-      .references((): AnyPgColumn => storeInventories.id, { onDelete: "cascade" }),
+      .references((): AnyPgColumn => storeInventories.id, {
+        onDelete: "cascade",
+      }),
     change: integer("change").notNull(),
     reason: storeInventoryTransactionReasonEnum("reason"),
     reference: varchar("reference", { length: 255 }),

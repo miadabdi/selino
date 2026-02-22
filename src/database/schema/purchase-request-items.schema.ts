@@ -18,7 +18,9 @@ export const purchaseRequestItems = pgTable("purchase_request_items", {
 
   purchaseRequestId: integer("purchase_request_id")
     .notNull()
-    .references((): AnyPgColumn => purchaseRequests.id, { onDelete: "cascade" }),
+    .references((): AnyPgColumn => purchaseRequests.id, {
+      onDelete: "cascade",
+    }),
   productId: integer("product_id")
     .notNull()
     .references((): AnyPgColumn => products.id),

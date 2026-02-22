@@ -20,7 +20,7 @@ export class KavenegarSmsProvider extends SmsProvider {
   constructor(private readonly configService: ConfigService) {
     super();
     // kavenegar is a CommonJS package
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+
     // const Kavenegar = require("kavenegar");
     this.api = Kavenegar.KavenegarApi({
       apikey: this.configService.getOrThrow<string>("KAVENEGAR_API_KEY"),

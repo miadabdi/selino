@@ -70,13 +70,9 @@ export class RefreshTokenService {
   ): Promise<{ newRawToken: string; tokenRecord: RefreshToken }> {
     const tokenHash = this.hashToken(rawToken);
 
-    const result = await this.db
-      .select()
-      .from(refreshTokens)
-      .where(eq(refreshTokens.tokenHash, tokenHash))
-      .limit(1);
-
-    const existing = result[0];
+    const existing = await this.db.query.refreshTokens.findFirst({
+      where: (table) => eq(table.tokenHash, tokenHash),
+    });
 
     if (!existing) {
       throw new UnauthorizedException("Invalid refresh token");

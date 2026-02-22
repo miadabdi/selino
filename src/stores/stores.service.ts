@@ -1,7 +1,11 @@
-import { HttpStatus, Inject, Injectable } from "@nestjs/common";
-import { and, eq, isNull, ne } from "drizzle-orm";
-import { throwHttpError } from "../common/http-error.js";
-import { slugify } from "../common/slug.js";
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { and, eq, isNull } from "drizzle-orm";
+import { generateUniqueSlug } from "../common/slug.js";
 import { DATABASE } from "../database/database.constants.js";
 import type { Database } from "../database/database.types.js";
 import {
@@ -26,7 +30,7 @@ export class StoresService {
     dto: CreateStoreDto,
     logo?: Express.Multer.File,
   ) {
-    const slug = await this.generateUniqueSlug(dto.name);
+    const slug = generateUniqueSlug(dto.name);
     const logoFileId = logo
       ? (
           await this.filesService.uploadFromBuffer(
@@ -62,31 +66,27 @@ export class StoresService {
   }
 
   async getById(id: number) {
-    const [store] = await this.db
-      .select()
-      .from(stores)
-      .where(and(eq(stores.id, id), isNull(stores.deletedAt)))
-      .limit(1);
+    const store = await this.db.query.stores.findFirst({
+      where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
+    });
 
     if (!store) {
-      throwHttpError(HttpStatus.NOT_FOUND, "Store not found");
+      throw new NotFoundException("Store not found");
     }
 
     return store;
   }
 
   async getMemberRole(userId: number, storeId: number) {
-    const [member] = await this.db
-      .select({ role: storeMembers.role })
-      .from(storeMembers)
-      .where(
+    const member = await this.db.query.storeMembers.findFirst({
+      columns: { role: true },
+      where: (table) =>
         and(
-          eq(storeMembers.userId, userId),
-          eq(storeMembers.storeId, storeId),
-          eq(storeMembers.isActive, true),
+          eq(table.userId, userId),
+          eq(table.storeId, storeId),
+          eq(table.isActive, true),
         ),
-      )
-      .limit(1);
+    });
 
     return member?.role ?? null;
   }
@@ -95,10 +95,7 @@ export class StoresService {
     const current = await this.getById(id);
 
     const name = dto.name ?? current.name;
-    const slug =
-      dto.name != null
-        ? await this.generateUniqueSlug(dto.name, id)
-        : current.slug;
+    const slug = dto.name != null ? generateUniqueSlug(dto.name) : current.slug;
 
     let logoFileId = current.logoFileId;
 
@@ -151,23 +148,13 @@ export class StoresService {
   async addMember(storeId: number, dto: AddStoreMemberDto) {
     await this.getById(storeId);
 
-    const [existing] = await this.db
-      .select()
-      .from(storeMembers)
-      .where(
-        and(
-          eq(storeMembers.storeId, storeId),
-          eq(storeMembers.userId, dto.userId),
-        ),
-      )
-      .limit(1);
+    const existing = await this.db.query.storeMembers.findFirst({
+      where: (table) =>
+        and(eq(table.storeId, storeId), eq(table.userId, dto.userId)),
+    });
 
     if (existing) {
-      throwHttpError(
-        HttpStatus.CONFLICT,
-        "User is already a store member",
-        "userId",
-      );
+      throw new ConflictException("User is already a store member", "userId");
     }
 
     const [member] = await this.db
@@ -193,37 +180,9 @@ export class StoresService {
       .returning();
 
     if (result.length === 0) {
-      throwHttpError(HttpStatus.NOT_FOUND, "Store member not found");
+      throw new NotFoundException("Store member not found");
     }
 
     return { message: "Store member removed" };
-  }
-
-  private async generateUniqueSlug(
-    name: string,
-    excludeStoreId?: number,
-  ): Promise<string> {
-    const base = slugify(name);
-    let slug = base;
-    let counter = 2;
-
-    while (true) {
-      const [existing] = await this.db
-        .select({ id: stores.id })
-        .from(stores)
-        .where(
-          excludeStoreId != null
-            ? and(eq(stores.slug, slug), ne(stores.id, excludeStoreId))
-            : eq(stores.slug, slug),
-        )
-        .limit(1);
-
-      if (!existing) {
-        return slug;
-      }
-
-      slug = `${base}-${counter}`;
-      counter += 1;
-    }
   }
 }

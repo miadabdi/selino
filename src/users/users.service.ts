@@ -21,13 +21,9 @@ export class UsersService {
   ) {}
 
   async findById(id: number): Promise<User | undefined> {
-    const result = await this.db
-      .select()
-      .from(users)
-      .where(and(eq(users.id, id), isNull(users.deletedAt)))
-      .limit(1);
-
-    return result[0];
+    return this.db.query.users.findFirst({
+      where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
+    });
   }
 
   async findAuthenticatedById(
@@ -37,31 +33,22 @@ export class UsersService {
       where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
       with: {
         storeMemberships: {
-          where: (membership) =>
-            and(eq(membership.isActive, true), eq(membership.isActive, true)),
+          where: (membership) => eq(membership.isActive, true),
         },
       },
     });
   }
 
   async findByPhone(phone: string): Promise<User | undefined> {
-    const result = await this.db
-      .select()
-      .from(users)
-      .where(and(eq(users.phone, phone), isNull(users.deletedAt)))
-      .limit(1);
-
-    return result[0];
+    return this.db.query.users.findFirst({
+      where: (table) => and(eq(table.phone, phone), isNull(table.deletedAt)),
+    });
   }
 
   async findByEmail(email: string): Promise<User | undefined> {
-    const result = await this.db
-      .select()
-      .from(users)
-      .where(and(eq(users.email, email), isNull(users.deletedAt)))
-      .limit(1);
-
-    return result[0];
+    return this.db.query.users.findFirst({
+      where: (table) => and(eq(table.email, email), isNull(table.deletedAt)),
+    });
   }
 
   async create(data: NewUser): Promise<User> {

@@ -88,20 +88,15 @@ export class OtpService {
   async verifyOtp(phone: string, code: string): Promise<boolean> {
     const now = new Date();
 
-    const result = await this.db
-      .select()
-      .from(authOtps)
-      .where(
+    const otp = await this.db.query.authOtps.findFirst({
+      where: (table) =>
         and(
-          eq(authOtps.phone, phone),
-          eq(authOtps.code, code),
-          eq(authOtps.consumed, false),
-          gt(authOtps.expiresAt, now),
+          eq(table.phone, phone),
+          eq(table.code, code),
+          eq(table.consumed, false),
+          gt(table.expiresAt, now),
         ),
-      )
-      .limit(1);
-
-    const otp = result[0];
+    });
     if (!otp) return false;
 
     // Mark OTP as consumed
@@ -120,20 +115,15 @@ export class OtpService {
   async verifyEmailOtp(email: string, code: string): Promise<boolean> {
     const now = new Date();
 
-    const result = await this.db
-      .select()
-      .from(authOtps)
-      .where(
+    const otp = await this.db.query.authOtps.findFirst({
+      where: (table) =>
         and(
-          eq(authOtps.email, email),
-          eq(authOtps.code, code),
-          eq(authOtps.consumed, false),
-          gt(authOtps.expiresAt, now),
+          eq(table.email, email),
+          eq(table.code, code),
+          eq(table.consumed, false),
+          gt(table.expiresAt, now),
         ),
-      )
-      .limit(1);
-
-    const otp = result[0];
+    });
     if (!otp) return false;
 
     // Mark OTP as consumed

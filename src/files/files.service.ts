@@ -269,9 +269,10 @@ export class FilesService {
     // Delete from storage
     try {
       await this.storageProvider.delete(file.bucketName, file.path);
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        `Failed to delete object ${file.path} from bucket ${file.bucketName}: ${error}`,
+        `Failed to delete object ${file.path} from bucket ${file.bucketName}: ${message}`,
       );
     }
 
@@ -288,12 +289,8 @@ export class FilesService {
   private async findActiveById(
     fileId: number,
   ): Promise<FileRecord | undefined> {
-    const result = await this.db
-      .select()
-      .from(files)
-      .where(and(eq(files.id, fileId), isNull(files.deletedAt)))
-      .limit(1);
-
-    return result[0];
+    return this.db.query.files.findFirst({
+      where: (table) => and(eq(table.id, fileId), isNull(table.deletedAt)),
+    });
   }
 }

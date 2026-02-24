@@ -24,10 +24,10 @@
     "db:studio": "drizzle-kit studio",
     "db:check": "drizzle-kit check",
     "db:drop": "drizzle-kit drop",
-    "docker:up": "docker compose --profile development up -d",
-    "docker:down": "docker compose down",
-    "docker:rebuild": "docker compose down && docker compose build && docker compose --profile development up -d",
-    "docker:logs": "docker compose logs -f app",
+    "docker:up": "docker compose -f docker-compose.base.yml -f docker-compose.yml up -d",
+    "docker:down": "docker compose -f docker-compose.base.yml -f docker-compose.yml down",
+    "docker:rebuild": "docker compose -f docker-compose.base.yml -f docker-compose.yml down && docker compose -f docker-compose.base.yml -f docker-compose.yml build && docker compose -f docker-compose.base.yml -f docker-compose.yml up -d",
+    "docker:logs": "docker compose -f docker-compose.base.yml -f docker-compose.yml logs -f app",
     "prepare": "husky"
   },
   "dependencies": {

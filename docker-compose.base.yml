@@ -1,0 +1,138 @@
+services:
+  db:
+    image: postgres:18.1-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-selino}
+      POSTGRES_USER: ${POSTGRES_USER:-selino_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-selino_pass}
+      PGUSER: ${POSTGRES_USER:-selino_user}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - selino_network
+    volumes:
+      - db_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  db_test:
+    image: postgres:18.1-bookworm
+    restart: unless-stopped
+    profiles:
+      - test
+    environment:
+      POSTGRES_DB: ${POSTGRES_TEST_DB:-selino_test}
+      POSTGRES_USER: ${POSTGRES_USER:-selino_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-selino_pass}
+      PGUSER: ${POSTGRES_USER:-selino_user}
+    ports:
+      - "${POSTGRES_TEST_PORT:-5433}:5432"
+    networks:
+      - selino_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  rmq:
+    image: rabbitmq:3.13-management-alpine
+    hostname: selino-rmq
+    restart: unless-stopped
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_CONSOLE_PORT:-15672}:15672"
+    networks:
+      - selino_network
+    volumes:
+      - rmq_data:/var/lib/rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-selino_rmq}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-selino_rmq_pass}
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  seaweed_master:
+    image: chrislusf/seaweedfs:4.13
+    restart: unless-stopped
+    command: "master -ip=seaweed_master -ip.bind=0.0.0.0 -port=9333 -mdir=/data -volumeSizeLimitMB=5120"
+    ports:
+      - "${SEAWEED_MASTER_PORT:-9333}:9333"
+    networks:
+      - selino_network
+    volumes:
+      - seaweed_master_data:/data
+
+  seaweed_volume:
+    image: chrislusf/seaweedfs:4.13
+    restart: unless-stopped
+    command: "volume -mserver=seaweed_master:9333 -ip=seaweed_volume -ip.bind=0.0.0.0 -port=8080 -dir=/data -max=0"
+    ports:
+      - "${SEAWEED_VOLUME_PORT:-8080}:8080"
+    networks:
+      - selino_network
+    volumes:
+      - seaweed_volume_data:/data
+    depends_on:
+      seaweed_master:
+        condition: service_started
+
+  seaweed_filer:
+    image: chrislusf/seaweedfs:4.13
+    restart: unless-stopped
+    command: "filer -master=seaweed_master:9333 -ip=seaweed_filer -ip.bind=0.0.0.0 -port=8888"
+    ports:
+      - "${SEAWEED_FILER_PORT:-8888}:8888"
+      - "${SEAWEED_FILER_GRPC_PORT:-18888}:18888"
+    networks:
+      - selino_network
+    volumes:
+      - seaweed_filer_data:/data
+    depends_on:
+      seaweed_master:
+        condition: service_started
+      seaweed_volume:
+        condition: service_started
+
+  seaweed_s3:
+    image: chrislusf/seaweedfs:4.13
+    restart: unless-stopped
+    command: "s3 -filer=seaweed_filer:8888 -ip.bind=0.0.0.0 -port=8333"
+    ports:
+      - "${SEAWEED_S3_PORT:-8333}:8333"
+    environment:
+      AWS_ACCESS_KEY_ID: ${SEAWEED_ACCESS_KEY_ID:-s3_access}
+      AWS_SECRET_ACCESS_KEY: ${SEAWEED_SECRET_ACCESS_KEY:-s3_pass}
+    networks:
+      - selino_network
+    depends_on:
+      seaweed_filer:
+        condition: service_started
+
+volumes:
+  db_data:
+    driver: local
+  rmq_data:
+    driver: local
+  node_modules:
+    driver: local
+  seaweed_master_data:
+    driver: local
+  seaweed_volume_data:
+    driver: local
+  seaweed_filer_data:
+    driver: local
+
+networks:
+  selino_network:
+    driver: bridge

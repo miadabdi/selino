@@ -1,0 +1,61 @@
+name: Deploy Project
+
+on:
+  workflow_run:
+    workflows:
+      - Generate Docker Image Stable
+    branches:
+      - main
+    types:
+      - completed
+  workflow_dispatch:
+
+concurrency:
+  group: deployment-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+    env:
+      APP_DIR: /home/sellino/app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.0
+          cache: npm
+
+      - name: Extract immutable image tag
+        id: metadata
+        run: echo "image_tag=stable-$(node -p \"require('./package.json').version\")" >> $GITHUB_OUTPUT
+
+      - name: Deploy with Docker Compose over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || '22' }}
+          script_stop: true
+          envs: APP_DIR,DOCKER_USERNAME,DOCKER_PASSWORD,IMAGE_TAG
+          script: |
+            set -e
+            cd "$APP_DIR"
+            echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+            docker compose --env-file .env -f docker-compose.base.yml -f docker-compose-prod.yml pull app
+            docker compose --env-file .env -f docker-compose.base.yml -f docker-compose-prod.yml up -d app
+            docker image prune -f
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          IMAGE_TAG: ${{ steps.metadata.outputs.image_tag }}

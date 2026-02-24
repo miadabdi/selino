@@ -210,6 +210,12 @@ docker compose ps
 
 All services should show "healthy" status.
 
+### Docker Build Fails on `husky` During `npm ci --omit=dev`
+
+In production image builds, `npm ci --omit=dev` still runs lifecycle scripts like `prepare`, but `husky` is a dev dependency and is not installed in that stage.
+
+This project uses a guarded `prepare` script in [package.json](package.json) so production-only installs do not fail when `husky` is unavailable.
+
 ### Reset Everything
 
 ```bash

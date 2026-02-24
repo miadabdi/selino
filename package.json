@@ -28,7 +28,7 @@
     "docker:down": "docker compose -f docker-compose.base.yml -f docker-compose.yml down",
     "docker:rebuild": "docker compose -f docker-compose.base.yml -f docker-compose.yml down && docker compose -f docker-compose.base.yml -f docker-compose.yml build && docker compose -f docker-compose.base.yml -f docker-compose.yml up -d",
     "docker:logs": "docker compose -f docker-compose.base.yml -f docker-compose.yml logs -f app",
-    "prepare": "husky"
+    "prepare": "command -v husky >/dev/null 2>&1 && husky || true"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.990.0",

@@ -2,8 +2,7 @@ name: Deploy Project
 
 on:
   workflow_run:
-    workflows:
-      - Generate Docker Image Stable
+    workflows: ["Generate Docker Image Stable"]
     branches:
       - main
     types:

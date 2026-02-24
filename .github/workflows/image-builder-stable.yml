@@ -2,8 +2,7 @@ name: Generate Docker Image Stable
 
 on:
   workflow_run:
-    workflows:
-      - Run Tests
+    workflows: ["Run Tests"]
     branches:
       - main
     types:

@@ -30,4 +30,7 @@ const runMigrations = async () => {
   }
 };
 
-runMigrations();
+runMigrations().catch((error) => {
+  console.error("Unexpected error during migration:", error);
+  process.exit(1);
+});

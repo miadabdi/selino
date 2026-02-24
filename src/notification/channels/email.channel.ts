@@ -19,8 +19,6 @@ export class EmailChannelHandler extends NotificationChannelHandler {
     destination: string,
     body: string,
     title?: string,
-    _type?: string,
-    _metadata?: Record<string, unknown>,
   ): Promise<ChannelSendResult> {
     return this.emailProvider.send(destination, title ?? "", body);
   }

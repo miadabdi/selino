@@ -62,7 +62,7 @@ export class S3StorageProvider implements StorageProvider {
     key: string,
     mimetype: string,
     expiresIn = 3600,
-    maxFileSizeBytes?: number,
+    // maxFileSizeBytes?: number,
   ): Promise<string> {
     // TODO: S3 does not support enforcing max file size in presigned URLs. We should enforce this at the application level after upload, and delete the file if it exceeds the limit.
     const command = new PutObjectCommand({

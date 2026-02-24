@@ -119,6 +119,79 @@ services:
       retries: 5
       start_period: 10s
 
+  # SeaweedFS Master
+  seaweed_master:
+    image: chrislusf/seaweedfs:4.13
+    restart: unless-stopped
+    profiles:
+      - development
+      - test
+    command: "master -ip=seaweed_master -ip.bind=0.0.0.0 -port=9333 -mdir=/data -volumeSizeLimitMB=5120"
+    ports:
+      - "${SEAWEED_MASTER_PORT:-9333}:9333"
+    networks:
+      - selino_network
+    volumes:
+      - seaweed_master_data:/data
+
+  # SeaweedFS Volume Server
+  seaweed_volume:
+    image: chrislusf/seaweedfs:4.13
+    restart: unless-stopped
+    profiles:
+      - development
+      - test
+    command: "volume -mserver=seaweed_master:9333 -ip=seaweed_volume -ip.bind=0.0.0.0 -port=8080 -dir=/data -max=0"
+    ports:
+      - "${SEAWEED_VOLUME_PORT:-8080}:8080"
+    networks:
+      - selino_network
+    volumes:
+      - seaweed_volume_data:/data
+    depends_on:
+      seaweed_master:
+        condition: service_started
+
+  # SeaweedFS Filer
+  seaweed_filer:
+    image: chrislusf/seaweedfs:4.13
+    restart: unless-stopped
+    profiles:
+      - development
+      - test
+    command: "filer -master=seaweed_master:9333 -ip=seaweed_filer -ip.bind=0.0.0.0 -port=8888"
+    ports:
+      - "${SEAWEED_FILER_PORT:-8888}:8888"
+      - "${SEAWEED_FILER_GRPC_PORT:-18888}:18888"
+    networks:
+      - selino_network
+    volumes:
+      - seaweed_filer_data:/data
+    depends_on:
+      seaweed_master:
+        condition: service_started
+      seaweed_volume:
+        condition: service_started
+
+  # SeaweedFS S3 Gateway
+  seaweed_s3:
+    image: chrislusf/seaweedfs:4.13
+    restart: unless-stopped
+    profiles:
+      - development
+      - test
+    command: "s3 -filer=seaweed_filer:8888 -ip.bind=0.0.0.0 -port=8333"
+    ports:
+      - "${SEAWEED_S3_PORT:-8333}:8333"
+    environment:
+      AWS_ACCESS_KEY_ID: ${SEAWEED_ACCESS_KEY_ID:-s3_access}
+      AWS_SECRET_ACCESS_KEY: ${SEAWEED_SECRET_ACCESS_KEY:-s3_pass}
+    networks:
+      - selino_network
+    depends_on:
+      seaweed_filer:
+        condition: service_started
+
 volumes:
   db_data:
     driver: local
@@ -127,6 +200,12 @@ volumes:
   node_modules:
     driver: local
   dist:
+    driver: local
+  seaweed_master_data:
+    driver: local
+  seaweed_volume_data:
+    driver: local
+  seaweed_filer_data:
     driver: local
 
 networks:

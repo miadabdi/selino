@@ -2,9 +2,8 @@ name: Generate Docker Image Dev
 
 on:
   workflow_run:
-    workflows: ["Run Tests"]
-    branches:
-      - dev
+    workflows: ['Run Tests']
+    branches: [dev]
     types:
       - completed
   workflow_dispatch:

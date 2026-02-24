@@ -57,6 +57,38 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Database
+
+This project uses Drizzle ORM with PostgreSQL for database management.
+
+### Setup
+
+1. Set your database URL in `.env`:
+
+   ```env
+   DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+   ```
+
+2. Generate and apply migrations:
+
+   ```bash
+   # Generate migration from schema
+   npm run db:generate
+
+   # Apply migrations to database
+   npm run db:migrate
+
+   # Or push schema directly (development only)
+   npm run db:push
+   ```
+
+3. Launch Drizzle Studio to browse your database:
+   ```bash
+   npm run db:studio
+   ```
+
+For detailed migration workflow and best practices, see [MIGRATIONS.md](./MIGRATIONS.md).
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
@@ -69,6 +101,84 @@ $ mau deploy
 ```
 
 With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+
+### GitHub Actions deployment guide (this repository)
+
+This project deploys from GitHub Actions to an Ubuntu server over SSH.
+
+#### 1) Create deployment user and essential directories on Ubuntu
+
+Run these commands on the server:
+
+```bash
+sudo adduser --home /home/sellino --shell /bin/bash sellino
+sudo usermod -aG docker sellino
+sudo mkdir -p /home/sellino/app
+sudo chown -R sellino:sellino /home/sellino
+```
+
+Set up SSH key auth for that user:
+
+Create a dedicated SSH key pair for CI/CD deployment (recommended) on your local machine:
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-sellino-deploy" -f ~/.ssh/sellino_deploy
+```
+
+Get values:
+
+```bash
+# public key (paste into authorized_keys)
+cat ~/.ssh/sellino_deploy.pub
+
+# private key (save in GitHub secret DEPLOY_SSH_KEY)
+cat ~/.ssh/sellino_deploy
+```
+
+Then add the public key to the server user:
+
+```bash
+sudo -u sellino mkdir -p /home/sellino/.ssh
+sudo -u sellino chmod 700 /home/sellino/.ssh
+sudo -u sellino sh -c 'echo "<PASTE_CONTENT_OF_~/.ssh/sellino_deploy.pub>" >> /home/sellino/.ssh/authorized_keys'
+sudo -u sellino chmod 600 /home/sellino/.ssh/authorized_keys
+```
+
+Then sign in once as `sellino` and verify Docker access:
+
+```bash
+sudo -iu sellino
+docker ps
+```
+
+#### 2) Required files on server
+
+Inside `/home/sellino/app`, keep these files:
+
+- `.env`
+- `docker-compose-prod.yml`
+- `docker-compose.base.yml`
+
+The workflow deploy path is fixed to `/home/sellino/app`.
+
+#### 3) GitHub secrets
+
+Set these repository secrets:
+
+- `DEPLOY_HOST`: server IP or DNS
+- `DEPLOY_USER`: `sellino`
+- `DEPLOY_SSH_KEY`: private key for SSH login
+- `DEPLOY_PORT`: optional, default `22`
+- `DOCKER_USERNAME`: Docker Hub username
+- `DOCKER_PASSWORD`: Docker Hub password or access token
+
+#### 4) Immutable image deployment
+
+Deploy workflow uses immutable tag format:
+
+- `stable-<package.json version>`
+
+It does not deploy mutable `latest` tags.
 
 ## Resources
 
@@ -96,4 +206,5 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
 # selino

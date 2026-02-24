@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   integer,
   pgTable,
   serial,
@@ -6,7 +7,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { users } from "./users.schema.js";
+import { users } from "./users.schema";
 
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
@@ -16,7 +17,7 @@ export const notifications = pgTable("notifications", {
 
   userId: integer("user_id")
     .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
+    .references((): AnyPgColumn => users.id, { onDelete: "cascade" }),
 
   type: varchar("type", { length: 100 }).notNull(),
   title: varchar("title", { length: 255 }),

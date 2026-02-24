@@ -1,4 +1,4 @@
-import { NotificationChannel } from "../notification.enums.js";
+import { NotificationChannel } from "../notification.enums";
 
 /**
  * Options for sending a notification.
@@ -21,4 +21,7 @@ export interface SendNotificationOptions {
 
   /** Notification body / message content. */
   body: string;
+
+  /** Optional provider-specific metadata (e.g. { code } for OTP). */
+  metadata?: Record<string, unknown>;
 }

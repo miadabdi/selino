@@ -1,10 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as nodemailer from "nodemailer";
-import {
-  EmailProvider,
-  type EmailSendResult,
-} from "./email-provider.abstract.js";
+import { EmailProvider, type EmailSendResult } from "./email-provider.abstract";
 
 /**
  * SMTP-based email provider.

@@ -1,5 +1,5 @@
-import { RABBITMQ_EXCHANGE_NOTIFICATION } from "../rabbitmq/rabbitmq.module.js";
-import type { NotificationChannel } from "./notification.enums.js";
+import { RABBITMQ_EXCHANGE_NOTIFICATION } from "../rabbitmq/rabbitmq.module";
+import type { NotificationChannel } from "./notification.enums";
 
 /**
  * Injection token for the channel handler registry.

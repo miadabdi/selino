@@ -2,8 +2,8 @@ import { Global, Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { DATABASE } from "./database.constants.js";
-import * as schema from "./schema/index.js";
+import { DATABASE } from "./database.constants";
+import * as schema from "./schema/index";
 
 @Global()
 @Module({

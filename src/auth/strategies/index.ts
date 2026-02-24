@@ -1,2 +1,2 @@
-export { GoogleStrategy } from "./google.strategy.js";
-export { JwtStrategy } from "./jwt.strategy.js";
+export { GoogleStrategy } from "./google.strategy";
+export { JwtStrategy } from "./jwt.strategy";

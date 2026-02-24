@@ -1,4 +1,5 @@
 import {
+  AnyPgColumn,
   boolean,
   integer,
   pgTable,
@@ -6,7 +7,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { users } from "./users.schema.js";
+import { users } from "./users.schema";
 
 export const authOtps = pgTable("auth_otps", {
   id: serial("id").primaryKey(),
@@ -15,10 +16,11 @@ export const authOtps = pgTable("auth_otps", {
     .defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 
-  userId: integer("user_id").references(() => users.id, {
+  userId: integer("user_id").references((): AnyPgColumn => users.id, {
     onDelete: "set null",
   }),
-  phone: varchar("phone", { length: 20 }).notNull(),
+  phone: varchar("phone", { length: 20 }),
+  email: varchar("email", { length: 255 }),
   code: varchar("code", { length: 10 }).notNull(),
   consumed: boolean("consumed").notNull().default(false),
 });

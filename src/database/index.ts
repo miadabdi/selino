@@ -1,3 +1,3 @@
-export { DATABASE } from "./database.constants.js";
-export { DatabaseModule } from "./database.module.js";
-export * from "./schema/index.js";
+export { DATABASE } from "./database.constants";
+export { DatabaseModule } from "./database.module";
+export * from "./schema/index";

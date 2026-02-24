@@ -1,18 +1,23 @@
-import { Module } from "@nestjs/common";
+import { forwardRef, Global, Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
-import { OtpModule } from "../otp/otp.module.js";
-import { UsersModule } from "../users/users.module.js";
-import { AuthController } from "./auth.controller.js";
-import { AuthService } from "./auth.service.js";
-import { RefreshTokenService } from "./refresh-token.service.js";
-import { GoogleStrategy } from "./strategies/google.strategy.js";
-import { JwtStrategy } from "./strategies/jwt.strategy.js";
+import { OtpModule } from "../otp/otp.module";
+import { UsersModule } from "../users/users.module";
+import { AuthController } from "./auth.controller";
+import { AuthService } from "./auth.service";
+import { CaslAbilityFactory } from "./casl/casl-ability.factory";
+import { PoliciesGuard } from "./casl/policies.guard";
+import { UserEnrichmentGuard } from "./guards/user-enrichment.guard";
+import { RefreshTokenRepository } from "./refresh-token.repository";
+import { RefreshTokenService } from "./refresh-token.service";
+import { GoogleStrategy } from "./strategies/google.strategy";
+import { JwtStrategy } from "./strategies/jwt.strategy";
 
+@Global()
 @Module({
   imports: [
-    UsersModule,
+    forwardRef(() => UsersModule),
     OtpModule,
     PassportModule,
     JwtModule.registerAsync({
@@ -30,7 +35,23 @@ import { JwtStrategy } from "./strategies/jwt.strategy.js";
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, RefreshTokenService, JwtStrategy, GoogleStrategy],
-  exports: [AuthService, RefreshTokenService],
+  providers: [
+    AuthService,
+    RefreshTokenService,
+    RefreshTokenRepository,
+    CaslAbilityFactory,
+    PoliciesGuard,
+    JwtStrategy,
+    GoogleStrategy,
+    UserEnrichmentGuard,
+  ],
+  exports: [
+    AuthService,
+    RefreshTokenService,
+    RefreshTokenRepository,
+    CaslAbilityFactory,
+    PoliciesGuard,
+    UserEnrichmentGuard,
+  ],
 })
 export class AuthModule {}

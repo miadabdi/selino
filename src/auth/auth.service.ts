@@ -1,10 +1,11 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import type { User } from "../database/schema/index.js";
-import { OtpService } from "../otp/otp.service.js";
-import { UsersService } from "../users/users.service.js";
-import type { JwtPayload } from "./interfaces/jwt-payload.interface.js";
-import { RefreshTokenService } from "./refresh-token.service.js";
+import { TXContext } from "../database/database.types";
+import type { User } from "../database/schema/index";
+import { OtpService } from "../otp/otp.service";
+import { UsersRepository } from "../users/users.repository";
+import type { JwtPayload } from "./interfaces/jwt-payload.interface";
+import { RefreshTokenService } from "./refresh-token.service";
 
 export interface AuthTokens {
   accessToken: string;
@@ -14,7 +15,7 @@ export interface AuthTokens {
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly usersService: UsersService,
+    private readonly usersRepository: UsersRepository,
     private readonly otpService: OtpService,
     private readonly jwtService: JwtService,
     private readonly refreshTokenService: RefreshTokenService,
@@ -24,9 +25,31 @@ export class AuthService {
    * Step 1 of phone auth: send an OTP to the phone number.
    * Creates the user if they don't exist yet.
    */
-  async sendPhoneOtp(phone: string): Promise<void> {
-    const user = await this.usersService.findByPhone(phone);
-    await this.otpService.sendOtp(phone, user?.id);
+  async sendPhoneOtp(
+    phone: string,
+    userId?: number,
+    tx?: TXContext,
+  ): Promise<void> {
+    if (!userId) {
+      const user = await this.usersRepository.findByPhone(phone);
+      userId = user?.id;
+    }
+    await this.otpService.sendOtp(phone, userId, tx);
+  }
+
+  /**
+   * Send an OTP to the email address for verification.
+   */
+  async sendEmailOtp(
+    email: string,
+    userId?: number,
+    tx?: TXContext,
+  ): Promise<void> {
+    if (!userId) {
+      const user = await this.usersRepository.findByEmail(email);
+      userId = user?.id;
+    }
+    await this.otpService.sendEmailOtp(email, userId, tx);
   }
 
   /**
@@ -39,17 +62,45 @@ export class AuthService {
       throw new UnauthorizedException("Invalid or expired OTP");
     }
 
-    // Find or create user
-    let user = await this.usersService.findByPhone(phone);
-    if (!user) {
-      user = await this.usersService.create({ phone });
+    const existingUser = await this.usersRepository.findByPhone(phone);
+
+    if (!existingUser) {
+      const user = await this.usersRepository.transaction(async (tx) => {
+        const created = await this.usersRepository.create({ phone }, tx);
+        await this.usersRepository.markPhoneVerified(created.id, tx);
+        await this.usersRepository.updateLastLogin(created.id, tx);
+
+        return created;
+      });
+      return this.generateTokens(user);
     }
 
-    // Mark phone as verified and update last login
-    await this.usersService.markPhoneVerified(user.id);
-    await this.usersService.updateLastLogin(user.id);
+    if (!existingUser.isPhoneVerified) {
+      await this.usersRepository.transaction(async (tx) => {
+        await this.usersRepository.markPhoneVerified(existingUser.id, tx);
+        await this.usersRepository.updateLastLogin(existingUser.id, tx);
+      });
+    } else {
+      await this.usersRepository.updateLastLogin(existingUser.id);
+    }
 
-    return this.generateTokens(user);
+    return this.generateTokens(existingUser);
+  }
+
+  /**
+   * Verify email OTP and mark the email as verified for the user.
+   */
+  async verifyEmailOtp(email: string, code: string): Promise<void> {
+    const isValid = await this.otpService.verifyEmailOtp(email, code);
+    if (!isValid) {
+      throw new UnauthorizedException("Invalid or expired OTP");
+    }
+
+    // Find the user by email and mark as verified
+    const user = await this.usersRepository.findByEmail(email);
+    if (user) {
+      await this.usersRepository.markEmailVerified(user.id);
+    }
   }
 
   /**
@@ -67,13 +118,28 @@ export class AuthService {
       );
     }
 
-    const user = await this.usersService.findOrCreateByEmail({
-      email: googleUser.email,
-      firstName: googleUser.firstName,
-      lastName: googleUser.lastName,
-    });
+    const existing = await this.usersRepository.findByEmail(googleUser.email);
+    if (existing) {
+      await this.usersRepository.updateLastLogin(existing.id);
+      return this.generateTokens(existing);
+    }
 
-    await this.usersService.updateLastLogin(user.id);
+    const user = await this.usersRepository.transaction(async (tx) => {
+      const created = await this.usersRepository.create(
+        {
+          email: googleUser.email,
+          firstName: googleUser.firstName ?? null,
+          lastName: googleUser.lastName ?? null,
+          phone: "",
+          isEmailVerified: true,
+        },
+        tx,
+      );
+
+      await this.usersRepository.updateLastLogin(created.id, tx);
+
+      return created;
+    });
 
     return this.generateTokens(user);
   }
@@ -85,7 +151,7 @@ export class AuthService {
     const { newRawToken, tokenRecord } =
       await this.refreshTokenService.rotate(rawRefreshToken);
 
-    const user = await this.usersService.findById(tokenRecord.userId);
+    const user = await this.usersRepository.findById(tokenRecord.userId);
     if (!user) {
       throw new UnauthorizedException("User not found");
     }

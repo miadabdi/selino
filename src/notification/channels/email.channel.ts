@@ -2,8 +2,8 @@ import { Injectable } from "@nestjs/common";
 import {
   NotificationChannelHandler,
   type ChannelSendResult,
-} from "../interfaces/notification-channel.interface.js";
-import { EmailProvider } from "../providers/email/email-provider.abstract.js";
+} from "../interfaces/notification-channel.interface";
+import { EmailProvider } from "../providers/email/email-provider.abstract";
 
 /**
  * Email channel handler.

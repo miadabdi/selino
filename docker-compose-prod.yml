@@ -1,0 +1,24 @@
+services:
+  app:
+    image: ${DOCKER_USERNAME}/selino:${IMAGE_TAG}
+    container_name: selino_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    ports:
+      - "${PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      db:
+        condition: service_healthy
+      rmq:
+        condition: service_healthy
+      seaweed_s3:
+        condition: service_started

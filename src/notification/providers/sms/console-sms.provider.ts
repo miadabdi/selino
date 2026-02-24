@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { SmsProvider, type SmsSendResult } from "./sms-provider.abstract.js";
+import { SmsProvider, type SmsSendResult } from "./sms-provider.abstract";
 
 /**
  * Console-based SMS provider for development / testing.
@@ -14,6 +14,14 @@ export class ConsoleSmsProvider extends SmsProvider {
     return Promise.resolve({
       success: true,
       messageId: `dev-${Date.now()}`,
+    });
+  }
+
+  override sendVerifyCode(phone: string, code: string): Promise<SmsSendResult> {
+    this.logger.log(`[DEV SMS Verify] To: ${phone} | Code: ${code}`);
+    return Promise.resolve({
+      success: true,
+      messageId: `dev-verify-${Date.now()}`,
     });
   }
 }

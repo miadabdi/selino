@@ -1,55 +1,100 @@
-import { Inject, Injectable } from "@nestjs/common";
-import { and, eq, gt } from "drizzle-orm";
-import { DATABASE } from "../database/database.constants.js";
-import type { Database } from "../database/database.types.js";
-import { authOtps } from "../database/schema/index.js";
-import { NotificationChannel } from "../notification/notification.enums.js";
-import { NotificationService } from "../notification/notification.service.js";
+import { Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { TXContext } from "../database/database.types";
+import { NotificationChannel } from "../notification/notification.enums";
+import { NotificationService } from "../notification/notification.service";
+import { OtpRepository } from "./otp.repository";
 
 @Injectable()
 export class OtpService {
-  /** OTP validity duration in minutes */
-  private readonly OTP_TTL_MINUTES = 5;
+  /** OTP validity duration in minutes. */
+  private readonly otpTtlMinutes: number;
 
-  /** OTP code length */
-  private readonly OTP_LENGTH = 6;
+  /** OTP code length. */
+  private readonly otpLength: number;
 
   constructor(
-    @Inject(DATABASE) private readonly db: Database,
+    private readonly otpRepository: OtpRepository,
     private readonly notificationService: NotificationService,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.otpTtlMinutes =
+      this.configService.getOrThrow<number>("OTP_TTL_MINUTES");
+    this.otpLength = this.configService.getOrThrow<number>("OTP_LENGTH");
+  }
 
   /**
    * Generate a random numeric OTP code.
    */
   private generateCode(): string {
-    const min = Math.pow(10, this.OTP_LENGTH - 1);
-    const max = Math.pow(10, this.OTP_LENGTH) - 1;
+    const min = Math.pow(10, this.otpLength - 1);
+    const max = Math.pow(10, this.otpLength) - 1;
     return String(Math.floor(min + Math.random() * (max - min + 1)));
   }
 
   /**
    * Create and send a new OTP for the given phone number.
    */
-  async sendOtp(phone: string, userId?: number): Promise<void> {
+  async sendOtp(
+    phone: string,
+    userId?: number,
+    txContext: TXContext = this.otpRepository.db,
+  ): Promise<void> {
     const code = this.generateCode();
-    const expiresAt = new Date(Date.now() + this.OTP_TTL_MINUTES * 60 * 1000);
+    const expiresAt = new Date(Date.now() + this.otpTtlMinutes * 60 * 1000);
 
-    await this.db.insert(authOtps).values({
+    await this.otpRepository.createPhoneOtp(
       phone,
       code,
       expiresAt,
-      userId: userId ?? null,
-      consumed: false,
-    });
+      userId,
+      txContext,
+    );
 
-    await this.notificationService.send({
-      channel: NotificationChannel.SMS,
-      destination: phone,
-      type: "otp",
-      body: `Your Selino verification code is: ${code}`,
-      userId: userId ?? undefined,
-    });
+    await this.notificationService.send(
+      {
+        channel: NotificationChannel.SMS,
+        destination: phone,
+        type: "otp",
+        body: `Your Selino verification code is: ${code}`,
+        userId: userId ?? undefined,
+        metadata: { code },
+      },
+      txContext,
+    );
+  }
+
+  /**
+   * Create and send a new OTP for the given email address.
+   */
+  async sendEmailOtp(
+    email: string,
+    userId?: number,
+    txContext: TXContext = this.otpRepository.db,
+  ): Promise<void> {
+    const code = this.generateCode();
+    const expiresAt = new Date(Date.now() + this.otpTtlMinutes * 60 * 1000);
+
+    await this.otpRepository.createEmailOtp(
+      email,
+      code,
+      expiresAt,
+      userId,
+      txContext,
+    );
+
+    await this.notificationService.send(
+      {
+        channel: NotificationChannel.EMAIL,
+        destination: email,
+        type: "otp",
+        title: "Email Verification Code",
+        body: `Your Selino verification code is: ${code}`,
+        userId: userId ?? undefined,
+        metadata: { code },
+      },
+      txContext,
+    );
   }
 
   /**
@@ -59,27 +104,27 @@ export class OtpService {
   async verifyOtp(phone: string, code: string): Promise<boolean> {
     const now = new Date();
 
-    const result = await this.db
-      .select()
-      .from(authOtps)
-      .where(
-        and(
-          eq(authOtps.phone, phone),
-          eq(authOtps.code, code),
-          eq(authOtps.consumed, false),
-          gt(authOtps.expiresAt, now),
-        ),
-      )
-      .limit(1);
-
-    const otp = result[0];
+    const otp = await this.otpRepository.findValidPhoneOtp(phone, code, now);
     if (!otp) return false;
 
     // Mark OTP as consumed
-    await this.db
-      .update(authOtps)
-      .set({ consumed: true })
-      .where(eq(authOtps.id, otp.id));
+    await this.otpRepository.markConsumed(otp.id);
+
+    return true;
+  }
+
+  /**
+   * Verify an OTP code for the given email address.
+   * Returns true if valid, false otherwise. Marks OTP as consumed on success.
+   */
+  async verifyEmailOtp(email: string, code: string): Promise<boolean> {
+    const now = new Date();
+
+    const otp = await this.otpRepository.findValidEmailOtp(email, code, now);
+    if (!otp) return false;
+
+    // Mark OTP as consumed
+    await this.otpRepository.markConsumed(otp.id);
 
     return true;
   }

@@ -1,10 +1,7 @@
 import { AmqpConnection } from "@golevelup/nestjs-rabbitmq";
 import { Injectable, Logger } from "@nestjs/common";
-import type { NotificationJobPayload } from "./interfaces/notification-job.interface.js";
-import {
-  NOTIFICATION_EXCHANGE,
-  routingKeyFor,
-} from "./notification.constants.js";
+import type { NotificationJobPayload } from "./interfaces/notification-job.interface";
+import { NOTIFICATION_EXCHANGE, routingKeyFor } from "./notification.constants";
 
 /**
  * Publishes notification delivery jobs to RabbitMQ.

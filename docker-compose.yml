@@ -17,9 +17,11 @@ services:
       PORT: ${PORT:-3000}
       DATABASE_URL: postgresql://${POSTGRES_USER:-selino_user}:${POSTGRES_PASSWORD:-selino_pass}@db:5432/${POSTGRES_DB:-selino}
       RABBITMQ_URI: amqp://${RABBITMQ_USER:-selino_rmq}:${RABBITMQ_PASS:-selino_rmq_pass}@rmq:5672
+      STORAGE_ENDPOINT: http://seaweed_s3:8333
     volumes:
       - ./:/home/node/app
-      - node_modules:/home/node/app/node_modules
+      - /home/node/app/node_modules
+      - /home/node/app/dist
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -32,8 +34,4 @@ services:
       rmq:
         condition: service_healthy
       seaweed_s3:
-        condition: service_started
-
-volumes:
-  node_modules:
-    driver: local
+        condition: service_healthy

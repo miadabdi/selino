@@ -34,9 +34,9 @@ jobs:
           node-version: 24.13.0
           cache: npm
 
-      - name: Extract immutable image tag
-        id: metadata
-        run: echo "image_tag=stable-$(node -p \"require('./package.json').version\")" >> $GITHUB_OUTPUT
+      - name: Extract project version
+        uses: saionaro/extract-package-version@v1.3.0
+        id: package_ver
 
       - name: Deploy with Docker Compose over SSH
         uses: appleboy/ssh-action@v1.2.0
@@ -57,4 +57,4 @@ jobs:
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-          IMAGE_TAG: ${{ steps.metadata.outputs.image_tag }}
+          IMAGE_TAG: stable-${{ steps.package_ver.outputs.version }}

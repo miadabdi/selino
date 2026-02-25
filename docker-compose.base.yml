@@ -42,7 +42,7 @@ services:
       start_period: 10s
 
   rmq:
-    image: rabbitmq:3.13-management-alpine
+    image: rabbitmq:4.2.4-management-alpine
     hostname: selino-rmq
     restart: unless-stopped
     ports:
@@ -73,6 +73,13 @@ services:
       - selino_network
     volumes:
       - seaweed_master_data:/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -q --spider http://localhost:9333/cluster/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   seaweed_volume:
     image: chrislusf/seaweedfs:4.13
@@ -84,9 +91,15 @@ services:
       - selino_network
     volumes:
       - seaweed_volume_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     depends_on:
       seaweed_master:
-        condition: service_started
+        condition: service_healthy
 
   seaweed_filer:
     image: chrislusf/seaweedfs:4.13
@@ -99,11 +112,17 @@ services:
       - selino_network
     volumes:
       - seaweed_filer_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8888/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     depends_on:
       seaweed_master:
-        condition: service_started
+        condition: service_healthy
       seaweed_volume:
-        condition: service_started
+        condition: service_healthy
 
   seaweed_s3:
     image: chrislusf/seaweedfs:4.13
@@ -116,16 +135,20 @@ services:
       AWS_SECRET_ACCESS_KEY: ${SEAWEED_SECRET_ACCESS_KEY:-s3_pass}
     networks:
       - selino_network
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8333"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     depends_on:
       seaweed_filer:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   db_data:
     driver: local
   rmq_data:
-    driver: local
-  node_modules:
     driver: local
   seaweed_master_data:
     driver: local

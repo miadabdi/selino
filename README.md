@@ -1,210 +1,326 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Selino Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS 11 backend for a multi-store commerce workflow with OTP auth, inventory management, purchase requests, invoicing, file storage, and async notifications.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Tech Stack
 
-## Description
+- Node.js 24.x
+- NestJS 11 + TypeScript
+- PostgreSQL + Drizzle ORM
+- RabbitMQ (`@golevelup/nestjs-rabbitmq`)
+- S3-compatible object storage (AWS S3 / MinIO / SeaweedFS S3)
+- Swagger OpenAPI (`/api/docs`)
+- Jest + ESLint + Prettier
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## What This Service Does
 
-## Project setup
+- Auth
+- Phone OTP login
+- Email verification OTP
+- Google OAuth login
+- JWT access tokens + rotating refresh tokens
 
-```bash
-$ npm install
+- Commerce domains
+- Stores and store members (owner/manager/seller/gatherer)
+- Product catalog (brands, categories, specs, images)
+- Store inventory with reservation and transaction logging
+- Purchase request cart flow (active/confirm/cancel/expire)
+- Invoice and invoice-item creation on confirmation
+
+- Files and media
+- Presigned upload intents
+- Upload confirmation lifecycle (`pending -> ready -> failed`)
+- Server-side uploads for product/store/profile images
+
+- Notifications
+- SMS/email notification jobs via RabbitMQ
+- Provider abstraction (console, Kavenegar, SMS.ir, SMTP)
+- Delivery status tracking
+
+## Project Structure
+
+```text
+src/
+  auth/                OTP, Google OAuth, JWT, refresh token rotation, CASL abilities
+  users/               profile and profile image updates
+  stores/              store CRUD + member management
+  categories/          category tree + category spec schema
+  brands/              brand CRUD
+  products/            product CRUD, spec validation, product images
+  inventories/         per-store inventory + stock transactions
+  purchase-requests/   cart/checkout flow + invoice generation + expiry worker
+  files/               upload-intent/confirm/delete + URL resolution
+  storage/             S3-compatible storage provider + bucket bootstrap
+  notification/        async notification producer/consumer/channels/providers
+  otp/                 OTP creation/verification
+  database/            Drizzle module, schema, relations, migration runner
+  rabbitmq/            global RabbitMQ module
 ```
 
-## Compile and run the project
+## Runtime Behavior (High Level)
+
+- All DTOs are globally validated (`whitelist`, `forbidNonWhitelisted`, `transform`).
+- Errors are normalized by `HttpErrorFilter` to `{ error, field? }` shape.
+- Swagger docs are available at `GET /api/docs`.
+- `GET /health` returns service health.
+
+## Authorization Model
+
+- Authentication: JWT bearer (`JwtAuthGuard`)
+- Enriched user context for most protected routes: `UserEnrichmentGuard`
+- Authorization rules: CASL ability factory (`Auth/casl`)
+
+Current ability rules:
+
+- `isAdmin = true`: `manage all`
+- Store managing roles (`owner`, `manager`, `seller`):
+  - `create Brand`
+  - `create Product`
+  - `update Product`
+- Managing any store grants inventory permissions scoped by `storeId`:
+  - `create Inventory` where `storeId` in managed stores
+  - `update Inventory` where `storeId` in managed stores
+- Purchase request updates allowed for requester only (`requesterId = user.id`)
+
+## API Surface
+
+All route definitions below are from current controllers.
+
+### App
+
+- `GET /`
+- `GET /health`
+
+### Auth
+
+- `POST /auth/otp/send`
+- `POST /auth/otp/verify`
+- `POST /auth/email/send` (auth)
+- `POST /auth/email/verify` (auth)
+- `GET /auth/google`
+- `GET /auth/google/callback`
+- `POST /auth/refresh`
+- `POST /auth/logout`
+- `POST /auth/logout-all` (auth)
+
+### Users
+
+- `PUT /users/me` (auth, multipart `profilePicture`)
+- `GET /users/me` (auth)
+
+### Stores
+
+- `POST /stores` (auth, multipart `logo`)
+- `GET /stores/:id` (auth)
+- `PATCH /stores/:id` (auth, multipart `logo`)
+- `DELETE /stores/:id` (auth)
+- `POST /stores/:id/members` (auth)
+- `DELETE /stores/:id/members/:userId` (auth)
+
+### Categories
+
+- `GET /categories` (auth)
+- `POST /categories` (auth)
+- `PATCH /categories/:id` (auth)
+- `GET /categories/:id/spec-schema` (auth)
+- `PUT /categories/:id/spec-schema` (auth)
+
+### Brands
+
+- `GET /brands` (auth)
+- `POST /brands` (auth)
+- `PATCH /brands/:id` (auth)
+
+### Products
+
+- `GET /products` (auth)
+- `POST /products` (auth, multipart `pictures[]`)
+- `GET /products/:id` (auth)
+- `PATCH /products/:id` (auth, multipart `pictures[]`)
+- `DELETE /products/:id` (auth)
+- `POST /products/:id/images` (auth)
+- `PATCH /products/:id/images/reorder` (auth)
+
+### Store Inventory
+
+- `POST /stores/:storeId/inventory` (auth)
+- `PATCH /stores/:storeId/inventory/:id/restock` (auth)
+- `GET /stores/:storeId/inventory` (auth)
+- `PATCH /stores/:storeId/inventory/:id` (auth)
+- `GET /stores/:storeId/inventory/:id/transactions` (auth)
+
+### Purchase Requests
+
+- `POST /purchase-requests/items` (auth)
+- `DELETE /purchase-requests/items/:itemId` (auth)
+- `GET /purchase-requests/active` (auth)
+- `POST /purchase-requests/:id/confirm` (auth)
+- `POST /purchase-requests/:id/cancel` (auth)
+
+### Files
+
+- `POST /files/upload-intent`
+- `POST /files/:id/confirm`
+- `DELETE /files/:id`
+
+## File Upload Lifecycle
+
+For client-direct uploads:
+
+1. Call `POST /files/upload-intent` with bucket key + metadata.
+2. Upload file directly to returned presigned URL.
+3. Call `POST /files/:id/confirm`.
+4. Use file ID in domain entities.
+
+For server-side image uploads (users/stores/products), services use `uploadFromBuffer` directly and create `ready` records.
+
+## Purchase Request and Stock Workflow
+
+- Adding an item reserves stock (`reservedStock += qty`).
+- Removing/cancelling/expiry releases reserved stock.
+- Confirming request:
+  - creates invoice + invoice items
+  - consumes reserved stock (`stock -= qty`, `reservedStock -= qty`)
+  - logs `sale` inventory transactions
+  - marks purchase request as `confirmed`
+- Background expiry worker in `PurchaseRequestsService` periodically expires stale open requests and releases reservations.
+
+Relevant env tuning:
+
+- `PURCHASE_REQUEST_EXPIRY_CHECK_INTERVAL_MS`
+- `PURCHASE_REQUEST_ACTIVE_WINDOW_MINUTES`
+
+## Environment Variables
+
+Use `.env.example` as template.
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+cp .env.example .env
 ```
 
-## Run tests
+### Required by validation
+
+Most settings below are required. A few (like `PORT`) have defaults but are still validated/coerced.
+
+- App/Auth
+- `PORT` (default: `3000`)
+- `JWT_SECRET`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_CALLBACK_URL`
+
+- Database/RabbitMQ
+- `DATABASE_URL`
+- `RABBITMQ_URI`
+
+- Storage (required)
+- `STORAGE_REGION`
+- `STORAGE_ACCESS_KEY_ID`
+- `STORAGE_SECRET_ACCESS_KEY`
+- `STORAGE_BUCKET_PRODUCT_MEDIA`
+- `STORAGE_BUCKET_PROFILE_MEDIA`
+- `STORAGE_FORCE_PATH_STYLE` (`true` for most self-hosted S3-compatible setups)
+- `STORAGE_PUBLIC_URL_BASE` should be set when serving public object URLs
+
+### Optional/conditional
+
+- SMS provider selection: `SMS_PROVIDER=console|kavenegar|smsir`
+- If `kavenegar`: `KAVENEGAR_API_KEY`, `KAVENEGAR_SENDER`
+- If `smsir`: `SMSIR_API_KEY`, `SMSIR_LINE_NUMBER` (+ optional template vars)
+- Email via SMTP: `SMTP_*`
+
+## Local Development (without Docker)
+
+Prerequisites:
+
+- Node.js 24+
+- PostgreSQL
+- RabbitMQ
+- S3-compatible storage endpoint/buckets (or AWS S3)
+
+Install and run:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm ci
+npm run db:migrate
+npm run start:dev
 ```
 
-## Database
+Swagger:
 
-This project uses Drizzle ORM with PostgreSQL for database management.
+- `http://localhost:<PORT>/api/docs`
 
-### Setup
+## Docker Development
 
-1. Set your database URL in `.env`:
-
-   ```env
-   DATABASE_URL=postgresql://user:password@localhost:5432/dbname
-   ```
-
-2. Generate and apply migrations:
-
-   ```bash
-   # Generate migration from schema
-   npm run db:generate
-
-   # Apply migrations to database
-   npm run db:migrate
-
-   # Or push schema directly (development only)
-   npm run db:push
-   ```
-
-3. Launch Drizzle Studio to browse your database:
-   ```bash
-   npm run db:studio
-   ```
-
-For detailed migration workflow and best practices, see [MIGRATIONS.md](./MIGRATIONS.md).
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Compose is split into base + environment overrides.
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+# full dev stack (infra + app)
+npm run docker:up
+
+# logs
+npm run docker:logs
+
+# stop
+npm run docker:down
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Files used:
 
-### GitHub Actions deployment guide (this repository)
+- `docker-compose.base.yml`: infra (Postgres, RabbitMQ, SeaweedFS)
+- `docker-compose.yml`: development app service
+- `docker-compose-prod.yml`: production app service
 
-This project deploys from GitHub Actions to an Ubuntu server over SSH.
+## Database and Migrations
 
-#### 1) Create deployment user and essential directories on Ubuntu
-
-Run these commands on the server:
+Drizzle schema lives in `src/database/schema/`.
 
 ```bash
-sudo adduser --home /home/sellino --shell /bin/bash sellino
-sudo usermod -aG docker sellino
-sudo mkdir -p /home/sellino/app
-sudo chown -R sellino:sellino /home/sellino
+# generate SQL migration from schema changes
+npm run db:generate
+
+# apply pending migrations
+npm run db:migrate
+
+# check migration state
+npm run db:check
+
+# open Drizzle Studio
+npm run db:studio
 ```
 
-Set up SSH key auth for that user:
+Migration SQL files are in `drizzle/`.
 
-Create a dedicated SSH key pair for CI/CD deployment (recommended) on your local machine:
+## Quality Checks
 
 ```bash
-ssh-keygen -t ed25519 -C "github-actions-sellino-deploy" -f ~/.ssh/sellino_deploy
+npm run lint
+npm run test
+npm run build
 ```
 
-Get values:
+## CI/CD and Deployment
+
+GitHub workflows:
+
+- `run-tests.yml`: lint + unit tests + build on `main` and `dev`
+- `image-builder-dev.yml`: builds/pushes development image tags
+- `image-builder-stable.yml`: builds/pushes stable production image tags
+- `deployment.yml`: deploys stable image to server over SSH using compose
+
+Deployment compose command in workflow uses:
 
 ```bash
-# public key (paste into authorized_keys)
-cat ~/.ssh/sellino_deploy.pub
-
-# private key (save in GitHub secret DEPLOY_SSH_KEY)
-cat ~/.ssh/sellino_deploy
+docker compose --env-file .env -f docker-compose.base.yml -f docker-compose-prod.yml up -d app
 ```
 
-Then add the public key to the server user:
+## Notes and Caveats
 
-```bash
-sudo -u sellino mkdir -p /home/sellino/.ssh
-sudo -u sellino chmod 700 /home/sellino/.ssh
-sudo -u sellino sh -c 'echo "<PASTE_CONTENT_OF_~/.ssh/sellino_deploy.pub>" >> /home/sellino/.ssh/authorized_keys'
-sudo -u sellino chmod 600 /home/sellino/.ssh/authorized_keys
-```
-
-Then sign in once as `sellino` and verify Docker access:
-
-```bash
-sudo -iu sellino
-docker ps
-```
-
-#### 2) Required files on server
-
-Inside `/home/sellino/app`, keep these files:
-
-- `.env`
-- `docker-compose-prod.yml`
-- `docker-compose.base.yml`
-
-The workflow deploy path is fixed to `/home/sellino/app`.
-
-#### 3) GitHub secrets
-
-Set these repository secrets:
-
-- `DEPLOY_HOST`: server IP or DNS
-- `DEPLOY_USER`: `sellino`
-- `DEPLOY_SSH_KEY`: private key for SSH login
-- `DEPLOY_PORT`: optional, default `22`
-- `DOCKER_USERNAME`: Docker Hub username
-- `DOCKER_PASSWORD`: Docker Hub password or access token
-
-#### 4) Immutable image deployment
-
-Deploy workflow uses immutable tag format:
-
-- `stable-<package.json version>`
-
-It does not deploy mutable `latest` tags.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+- The test suite currently only includes basic app/health tests; domain-level coverage is minimal.
+- Several domain routes use service-level CASL checks (not route metadata policies).
+- Public object URLs are built from `STORAGE_PUBLIC_URL_BASE`; leave it empty only if your storage integration does not rely on public URL resolution.
+- `prepare` script is guarded so production `npm ci --omit=dev` does not fail on missing husky.
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
-
-# selino
+UNLICENSED

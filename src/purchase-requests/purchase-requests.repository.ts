@@ -49,9 +49,9 @@ export class PurchaseRequestsRepository extends AbstractRepository {
       .then((rows) => rows.flatMap((row) => row.items));
   }
 
-  async findLatestActiveRequestForUserStore(
+  async findLatestActiveRequestForUserBusinessAccount(
     userId: number,
-    storeId: number,
+    businessAccountId: number,
     now: Date,
     txContext: TXContext = this.db,
   ) {
@@ -59,7 +59,7 @@ export class PurchaseRequestsRepository extends AbstractRepository {
       where: (table) =>
         and(
           eq(table.requesterId, userId),
-          eq(table.storeId, storeId),
+          eq(table.businessAccountId, businessAccountId),
           eq(table.status, "new"),
           gt(table.expiresAt, now),
         ),

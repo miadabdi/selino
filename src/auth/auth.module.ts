@@ -9,6 +9,7 @@ import { AuthService } from "./auth.service";
 import { CaslAbilityFactory } from "./casl/casl-ability.factory";
 import { PoliciesGuard } from "./casl/policies.guard";
 import { UserEnrichmentGuard } from "./guards/user-enrichment.guard";
+import { PermissionsGuard } from "./permissions";
 import { RefreshTokenRepository } from "./refresh-token.repository";
 import { RefreshTokenService } from "./refresh-token.service";
 import { GoogleStrategy } from "./strategies/google.strategy";
@@ -41,6 +42,7 @@ import { JwtStrategy } from "./strategies/jwt.strategy";
     RefreshTokenRepository,
     CaslAbilityFactory,
     PoliciesGuard,
+    PermissionsGuard,
     JwtStrategy,
     GoogleStrategy,
     UserEnrichmentGuard,
@@ -51,6 +53,7 @@ import { JwtStrategy } from "./strategies/jwt.strategy";
     RefreshTokenRepository,
     CaslAbilityFactory,
     PoliciesGuard,
+    PermissionsGuard,
     UserEnrichmentGuard,
   ],
 })

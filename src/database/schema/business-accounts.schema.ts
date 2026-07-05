@@ -1,6 +1,7 @@
 import {
   AnyPgColumn,
   integer,
+  pgEnum,
   pgTable,
   serial,
   text,
@@ -8,9 +9,13 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { files } from "./files.schema";
-import { users } from "./users.schema";
 
-export const stores = pgTable("stores", {
+export const businessAccountTypeEnum = pgEnum("business_account_type", [
+  "store",
+  "company",
+]);
+
+export const businessAccounts = pgTable("business_accounts", {
   id: serial("id").primaryKey(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
@@ -23,15 +28,12 @@ export const stores = pgTable("stores", {
 
   name: varchar("name", { length: 255 }).notNull(),
   slug: varchar("slug", { length: 255 }).unique(),
+  type: businessAccountTypeEnum("type").notNull().default("store"),
   description: text("description"),
   logoFileId: integer("logo_file_id").references((): AnyPgColumn => files.id, {
     onDelete: "set null",
   }),
-
-  ownerId: integer("owner_id").references((): AnyPgColumn => users.id, {
-    onDelete: "set null",
-  }),
 });
 
-export type Store = typeof stores.$inferSelect;
-export type NewStore = typeof stores.$inferInsert;
+export type BusinessAccount = typeof businessAccounts.$inferSelect;
+export type NewBusinessAccount = typeof businessAccounts.$inferInsert;

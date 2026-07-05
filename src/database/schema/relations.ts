@@ -1,12 +1,19 @@
 import { relations } from "drizzle-orm";
 import { authOtps } from "./auth-otps.schema";
 import { brands } from "./brands.schema";
+import { businessAccounts } from "./business-accounts.schema";
+import { businessMembers } from "./business-members.schema";
+import { businessSubscriptions } from "./business-subscriptions.schema";
 import { categories } from "./categories.schema";
+import { featurePermissions } from "./feature-permissions.schema";
+import { features } from "./features.schema";
 import { files } from "./files.schema";
 import { invoiceItems } from "./invoice-items.schema";
 import { invoices } from "./invoices.schema";
 import { notificationDeliveries } from "./notification-deliveries.schema";
 import { notifications } from "./notifications.schema";
+import { packageFeatures } from "./package-features.schema";
+import { packages } from "./packages.schema";
 import { permissions } from "./permissions.schema";
 import { productImages } from "./product-images.schema";
 import { products } from "./products.schema";
@@ -17,8 +24,6 @@ import { rolePermissions } from "./role-permissions.schema";
 import { roles } from "./roles.schema";
 import { storeInventories } from "./store-inventories.schema";
 import { storeInventoryTransactions } from "./store-inventory-transactions.schema";
-import { storeMembers } from "./store-members.schema";
-import { stores } from "./stores.schema";
 import { users } from "./users.schema";
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -28,8 +33,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   refreshTokens: many(refreshTokens),
   purchaseRequests: many(purchaseRequests),
   invoices: many(invoices),
-  stores: many(stores),
-  storeMemberships: many(storeMembers),
+  businessMemberships: many(businessMembers),
   storeInventories: many(storeInventories),
   storeInventoryTransactions: many(storeInventoryTransactions),
 }));
@@ -48,7 +52,7 @@ export const filesRelations = relations(files, ({ one, many }) => ({
   }),
   productsAsDefaultImage: many(products),
   productImages: many(productImages),
-  storesWithLogo: many(stores),
+  businessAccountsWithLogo: many(businessAccounts),
 }));
 
 export const brandsRelations = relations(brands, ({ many }) => ({
@@ -97,38 +101,45 @@ export const productImagesRelations = relations(productImages, ({ one }) => ({
   }),
 }));
 
-export const storesRelations = relations(stores, ({ one, many }) => ({
-  logoFile: one(files, {
-    fields: [stores.logoFileId],
-    references: [files.id],
+export const businessAccountsRelations = relations(
+  businessAccounts,
+  ({ one, many }) => ({
+    logoFile: one(files, {
+      fields: [businessAccounts.logoFileId],
+      references: [files.id],
+    }),
+    members: many(businessMembers),
+    inventories: many(storeInventories),
+    purchaseRequests: many(purchaseRequests),
+    invoices: many(invoices),
+    subscriptions: many(businessSubscriptions),
   }),
-  owner: one(users, {
-    fields: [stores.ownerId],
-    references: [users.id],
-  }),
-  members: many(storeMembers),
-  inventories: many(storeInventories),
-  purchaseRequests: many(purchaseRequests),
-  invoices: many(invoices),
-}));
+);
 
-export const storeMembersRelations = relations(storeMembers, ({ one }) => ({
-  store: one(stores, {
-    fields: [storeMembers.storeId],
-    references: [stores.id],
+export const businessMembersRelations = relations(
+  businessMembers,
+  ({ one }) => ({
+    businessAccount: one(businessAccounts, {
+      fields: [businessMembers.businessAccountId],
+      references: [businessAccounts.id],
+    }),
+    user: one(users, {
+      fields: [businessMembers.userId],
+      references: [users.id],
+    }),
+    role: one(roles, {
+      fields: [businessMembers.roleId],
+      references: [roles.id],
+    }),
   }),
-  user: one(users, {
-    fields: [storeMembers.userId],
-    references: [users.id],
-  }),
-}));
+);
 
 export const storeInventoriesRelations = relations(
   storeInventories,
   ({ one, many }) => ({
-    store: one(stores, {
-      fields: [storeInventories.storeId],
-      references: [stores.id],
+    businessAccount: one(businessAccounts, {
+      fields: [storeInventories.businessAccountId],
+      references: [businessAccounts.id],
     }),
     product: one(products, {
       fields: [storeInventories.productId],
@@ -165,9 +176,9 @@ export const purchaseRequestsRelations = relations(
       fields: [purchaseRequests.requesterId],
       references: [users.id],
     }),
-    store: one(stores, {
-      fields: [purchaseRequests.storeId],
-      references: [stores.id],
+    businessAccount: one(businessAccounts, {
+      fields: [purchaseRequests.businessAccountId],
+      references: [businessAccounts.id],
     }),
     items: many(purchaseRequestItems),
     invoices: many(invoices),
@@ -193,9 +204,9 @@ export const purchaseRequestItemsRelations = relations(
 );
 
 export const invoicesRelations = relations(invoices, ({ one, many }) => ({
-  store: one(stores, {
-    fields: [invoices.storeId],
-    references: [stores.id],
+  businessAccount: one(businessAccounts, {
+    fields: [invoices.businessAccountId],
+    references: [businessAccounts.id],
   }),
   buyer: one(users, {
     fields: [invoices.buyerId],
@@ -246,10 +257,12 @@ export const notificationDeliveriesRelations = relations(
 
 export const rolesRelations = relations(roles, ({ many }) => ({
   rolePermissions: many(rolePermissions),
+  businessMembers: many(businessMembers),
 }));
 
 export const permissionsRelations = relations(permissions, ({ many }) => ({
   rolePermissions: many(rolePermissions),
+  featurePermissions: many(featurePermissions),
 }));
 
 export const rolePermissionsRelations = relations(
@@ -262,6 +275,58 @@ export const rolePermissionsRelations = relations(
     permission: one(permissions, {
       fields: [rolePermissions.permissionId],
       references: [permissions.id],
+    }),
+  }),
+);
+
+export const packagesRelations = relations(packages, ({ many }) => ({
+  packageFeatures: many(packageFeatures),
+  businessSubscriptions: many(businessSubscriptions),
+}));
+
+export const featuresRelations = relations(features, ({ many }) => ({
+  packageFeatures: many(packageFeatures),
+  featurePermissions: many(featurePermissions),
+}));
+
+export const packageFeaturesRelations = relations(
+  packageFeatures,
+  ({ one }) => ({
+    package: one(packages, {
+      fields: [packageFeatures.packageId],
+      references: [packages.id],
+    }),
+    feature: one(features, {
+      fields: [packageFeatures.featureId],
+      references: [features.id],
+    }),
+  }),
+);
+
+export const featurePermissionsRelations = relations(
+  featurePermissions,
+  ({ one }) => ({
+    feature: one(features, {
+      fields: [featurePermissions.featureId],
+      references: [features.id],
+    }),
+    permission: one(permissions, {
+      fields: [featurePermissions.permissionId],
+      references: [permissions.id],
+    }),
+  }),
+);
+
+export const businessSubscriptionsRelations = relations(
+  businessSubscriptions,
+  ({ one }) => ({
+    businessAccount: one(businessAccounts, {
+      fields: [businessSubscriptions.businessAccountId],
+      references: [businessAccounts.id],
+    }),
+    package: one(packages, {
+      fields: [businessSubscriptions.packageId],
+      references: [packages.id],
     }),
   }),
 );

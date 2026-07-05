@@ -9,7 +9,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { stores } from "./stores.schema";
+import { businessAccounts } from "./business-accounts.schema";
 import { users } from "./users.schema";
 
 export const purchaseRequestStatusEnum = pgEnum("purchase_request_status", [
@@ -33,9 +33,12 @@ export const purchaseRequests = pgTable("purchase_requests", {
   requesterId: integer("requester_id")
     .notNull()
     .references((): AnyPgColumn => users.id),
-  storeId: integer("store_id").references((): AnyPgColumn => stores.id, {
-    onDelete: "set null",
-  }),
+  businessAccountId: integer("business_account_id").references(
+    (): AnyPgColumn => businessAccounts.id,
+    {
+      onDelete: "set null",
+    },
+  ),
 
   code: varchar("code", { length: 100 }),
   status: purchaseRequestStatusEnum("status").notNull().default("new"),

@@ -14,7 +14,7 @@ export class InventoriesRepository extends AbstractRepository {
   }
 
   async create(
-    storeId: number,
+    businessAccountId: number,
     userId: number,
     dto: CreateInventoryDto,
     txContext: TXContext = this.db,
@@ -22,7 +22,7 @@ export class InventoriesRepository extends AbstractRepository {
     const [created] = await txContext
       .insert(storeInventories)
       .values({
-        storeId,
+        businessAccountId,
         productId: dto.productId,
         price: dto.price,
         stock: dto.stock ?? 0,
@@ -38,7 +38,7 @@ export class InventoriesRepository extends AbstractRepository {
   }
 
   async restock(
-    storeId: number,
+    businessAccountId: number,
     inventoryId: number,
     qty: number,
     txContext: TXContext = this.db,
@@ -52,7 +52,7 @@ export class InventoriesRepository extends AbstractRepository {
       .where(
         and(
           eq(storeInventories.id, inventoryId),
-          eq(storeInventories.storeId, storeId),
+          eq(storeInventories.businessAccountId, businessAccountId),
         ),
       )
       .returning();
@@ -60,15 +60,18 @@ export class InventoriesRepository extends AbstractRepository {
     return updated;
   }
 
-  listByStoreId(storeId: number, txContext: TXContext = this.db) {
+  listByBusinessAccountId(
+    businessAccountId: number,
+    txContext: TXContext = this.db,
+  ) {
     return txContext.query.storeInventories.findMany({
-      where: (table) => eq(table.storeId, storeId),
+      where: (table) => eq(table.businessAccountId, businessAccountId),
       orderBy: (table) => [asc(table.id)],
     });
   }
 
   async updateById(
-    storeId: number,
+    businessAccountId: number,
     inventoryId: number,
     dto: UpdateInventoryDto,
     txContext: TXContext = this.db,
@@ -86,7 +89,7 @@ export class InventoriesRepository extends AbstractRepository {
       .where(
         and(
           eq(storeInventories.id, inventoryId),
-          eq(storeInventories.storeId, storeId),
+          eq(storeInventories.businessAccountId, businessAccountId),
         ),
       )
       .returning();
@@ -156,14 +159,17 @@ export class InventoriesRepository extends AbstractRepository {
       .returning();
   }
 
-  findInventoryByStoreAndId(
-    storeId: number,
+  findInventoryByBusinessAccountAndId(
+    businessAccountId: number,
     inventoryId: number,
     txContext: TXContext = this.db,
   ) {
     return txContext.query.storeInventories.findFirst({
       where: (table) =>
-        and(eq(table.id, inventoryId), eq(table.storeId, storeId)),
+        and(
+          eq(table.id, inventoryId),
+          eq(table.businessAccountId, businessAccountId),
+        ),
     });
   }
 
@@ -173,10 +179,14 @@ export class InventoriesRepository extends AbstractRepository {
     });
   }
 
-  findActiveStoreById(storeId: number, txContext: TXContext = this.db) {
-    return txContext.query.stores.findFirst({
+  findActiveBusinessAccountById(
+    businessAccountId: number,
+    txContext: TXContext = this.db,
+  ) {
+    return txContext.query.businessAccounts.findFirst({
       columns: { id: true },
-      where: (table) => and(eq(table.id, storeId), isNull(table.deletedAt)),
+      where: (table) =>
+        and(eq(table.id, businessAccountId), isNull(table.deletedAt)),
     });
   }
 

@@ -4,7 +4,6 @@ import {
   createMongoAbility,
 } from "@casl/ability";
 import { Injectable } from "@nestjs/common";
-import { MANAGING_STORE_MEMBER_ROLES } from "../../database/index";
 import type { AuthenticatedUser } from "../interfaces/index";
 import { Action } from "./actions.enum";
 
@@ -15,14 +14,20 @@ export class CaslAbilityFactory {
   createForUser(user: AuthenticatedUser) {
     const { can, build } = new AbilityBuilder<AppAbility>(createMongoAbility);
 
-    const managedStoreIds = user.storeMemberships
+    const writableBusinessAccountIds = user.businessMemberships
       .filter((membership) =>
-        MANAGING_STORE_MEMBER_ROLES.includes(membership.role),
+        membership.permissions.some((permission) =>
+          permission.endsWith(".write"),
+        ),
       )
-      .map((membership) => membership.storeId)
-      .filter((storeId, index, all) => all.indexOf(storeId) === index);
+      .map((membership) => membership.businessAccountId)
+      .filter(
+        (businessAccountId, index, all) =>
+          all.indexOf(businessAccountId) === index,
+      );
 
-    const hasManagingRoleInAnyStore = managedStoreIds.length > 0;
+    const hasWritePermissionInAnyBusinessAccount =
+      writableBusinessAccountIds.length > 0;
     const isAdmin = user.isAdmin === true;
 
     if (isAdmin) {
@@ -30,15 +35,19 @@ export class CaslAbilityFactory {
       return build();
     }
 
-    if (hasManagingRoleInAnyStore) {
+    if (hasWritePermissionInAnyBusinessAccount) {
       can(Action.Create, "Brand");
       can(Action.Create, "Product");
       can(Action.Update, "Product");
     }
 
-    if (managedStoreIds.length > 0) {
-      can(Action.Create, "Inventory", { storeId: { $in: managedStoreIds } });
-      can(Action.Update, "Inventory", { storeId: { $in: managedStoreIds } });
+    if (writableBusinessAccountIds.length > 0) {
+      can(Action.Create, "Inventory", {
+        businessAccountId: { $in: writableBusinessAccountIds },
+      });
+      can(Action.Update, "Inventory", {
+        businessAccountId: { $in: writableBusinessAccountIds },
+      });
     }
 
     can(Action.Update, "PurchaseRequest", { requesterId: user.id });

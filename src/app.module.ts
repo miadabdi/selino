@@ -13,7 +13,7 @@ import { ProductsModule } from "./products/products.module";
 import { PurchaseRequestsModule } from "./purchase-requests/purchase-requests.module";
 import { RabbitmqModule } from "./rabbitmq/rabbitmq.module";
 import { StorageModule } from "./storage/storage.module";
-import { StoresModule } from "./stores/stores.module";
+import { BusinessAccountsModule } from "./business-accounts/business-accounts.module";
 import { UsersModule } from "./users/users.module";
 
 @Module({
@@ -29,7 +29,7 @@ import { UsersModule } from "./users/users.module";
     AuthModule,
     UsersModule,
     FilesModule,
-    StoresModule,
+    BusinessAccountsModule,
     CategoriesModule,
     BrandsModule,
     ProductsModule,

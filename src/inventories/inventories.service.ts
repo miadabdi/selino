@@ -20,10 +20,13 @@ export class InventoriesService {
   private assertInventoryCasl(
     user: AuthenticatedUser,
     action: Action,
-    storeId: number,
+    businessAccountId: number,
   ) {
     const ability = this.caslAbilityFactory.createForUser(user);
-    const allowed = ability.can(action, subject("Inventory", { storeId }));
+    const allowed = ability.can(
+      action,
+      subject("Inventory", { businessAccountId }),
+    );
 
     if (!allowed) {
       throwHttpError(
@@ -34,23 +37,23 @@ export class InventoriesService {
   }
 
   async create(
-    storeId: number,
+    businessAccountId: number,
     user: AuthenticatedUser,
     dto: CreateInventoryDto,
   ) {
-    this.assertInventoryCasl(user, Action.Create, storeId);
-    await this.assertStoreExists(storeId);
+    this.assertInventoryCasl(user, Action.Create, businessAccountId);
+    await this.assertBusinessAccountExists(businessAccountId);
     await this.assertProductExists(dto.productId);
 
     const initialStock = dto.stock ?? 0;
 
     if (initialStock <= 0) {
-      return this.inventoriesRepository.create(storeId, user.id, dto);
+      return this.inventoriesRepository.create(businessAccountId, user.id, dto);
     }
 
     return this.inventoriesRepository.transaction(async (tx) => {
       const created = await this.inventoriesRepository.create(
-        storeId,
+        businessAccountId,
         user.id,
         dto,
         tx,
@@ -70,17 +73,17 @@ export class InventoriesService {
   }
 
   async restock(
-    storeId: number,
+    businessAccountId: number,
     inventoryId: number,
     user: AuthenticatedUser,
     dto: RestockInventoryDto,
   ) {
-    this.assertInventoryCasl(user, Action.Update, storeId);
-    await this.assertInventory(storeId, inventoryId);
+    this.assertInventoryCasl(user, Action.Update, businessAccountId);
+    await this.assertInventory(businessAccountId, inventoryId);
 
     return this.inventoriesRepository.transaction(async (tx) => {
       const updated = await this.inventoriesRepository.restock(
-        storeId,
+        businessAccountId,
         inventoryId,
         dto.qty,
         tx,
@@ -99,25 +102,28 @@ export class InventoriesService {
     });
   }
 
-  async list(storeId: number) {
-    await this.assertStoreExists(storeId);
+  async list(businessAccountId: number) {
+    await this.assertBusinessAccountExists(businessAccountId);
 
-    const rows = await this.inventoriesRepository.listByStoreId(storeId);
+    const rows =
+      await this.inventoriesRepository.listByBusinessAccountId(
+        businessAccountId,
+      );
 
     return rows;
   }
 
   async update(
-    storeId: number,
+    businessAccountId: number,
     inventoryId: number,
     user: AuthenticatedUser,
     dto: UpdateInventoryDto,
   ) {
-    this.assertInventoryCasl(user, Action.Update, storeId);
-    await this.assertInventory(storeId, inventoryId);
+    this.assertInventoryCasl(user, Action.Update, businessAccountId);
+    await this.assertInventory(businessAccountId, inventoryId);
 
     const updated = await this.inventoriesRepository.updateById(
-      storeId,
+      businessAccountId,
       inventoryId,
       dto,
     );
@@ -125,8 +131,8 @@ export class InventoriesService {
     return updated;
   }
 
-  async listTransactions(storeId: number, inventoryId: number) {
-    await this.assertInventory(storeId, inventoryId);
+  async listTransactions(businessAccountId: number, inventoryId: number) {
+    await this.assertInventory(businessAccountId, inventoryId);
 
     return this.storeInventoryTransactionsRepository.listByInventoryId(
       inventoryId,
@@ -189,10 +195,10 @@ export class InventoriesService {
     });
   }
 
-  async assertInventory(storeId: number, inventoryId: number) {
+  async assertInventory(businessAccountId: number, inventoryId: number) {
     const inventory =
-      await this.inventoriesRepository.findInventoryByStoreAndId(
-        storeId,
+      await this.inventoriesRepository.findInventoryByBusinessAccountAndId(
+        businessAccountId,
         inventoryId,
       );
 
@@ -218,11 +224,14 @@ export class InventoriesService {
     return inventory;
   }
 
-  private async assertStoreExists(storeId: number) {
-    const store = await this.inventoriesRepository.findActiveStoreById(storeId);
+  private async assertBusinessAccountExists(businessAccountId: number) {
+    const businessAccount =
+      await this.inventoriesRepository.findActiveBusinessAccountById(
+        businessAccountId,
+      );
 
-    if (!store) {
-      throwHttpError(HttpStatus.NOT_FOUND, "Store not found");
+    if (!businessAccount) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Business account not found");
     }
   }
 

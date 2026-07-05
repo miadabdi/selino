@@ -19,55 +19,55 @@ import { RestockInventoryDto } from "./dto/restock-inventory.dto";
 import { UpdateInventoryDto } from "./dto/update-inventory.dto";
 import { InventoriesService } from "./inventories.service";
 
-@ApiTags("Store Inventories")
+@ApiTags("Business Account Inventories")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, UserEnrichmentGuard)
-@Controller("stores/:storeId/inventory")
+@Controller("business-accounts/:businessAccountId/inventory")
 export class InventoriesController {
   constructor(private readonly inventoriesService: InventoriesService) {}
 
   @Post()
   create(
-    @Param("storeId", ParseIntPipe) storeId: number,
+    @Param("businessAccountId", ParseIntPipe) businessAccountId: number,
     @Req() req: Request,
     @Body() dto: CreateInventoryDto,
   ) {
     const user = req.user as AuthenticatedUser;
-    return this.inventoriesService.create(storeId, user, dto);
+    return this.inventoriesService.create(businessAccountId, user, dto);
   }
 
   @Patch(":id/restock")
   restock(
-    @Param("storeId", ParseIntPipe) storeId: number,
+    @Param("businessAccountId", ParseIntPipe) businessAccountId: number,
     @Param("id", ParseIntPipe) id: number,
     @Req() req: Request,
     @Body() dto: RestockInventoryDto,
   ) {
     const user = req.user as AuthenticatedUser;
-    return this.inventoriesService.restock(storeId, id, user, dto);
+    return this.inventoriesService.restock(businessAccountId, id, user, dto);
   }
 
   @Get()
-  list(@Param("storeId", ParseIntPipe) storeId: number) {
-    return this.inventoriesService.list(storeId);
+  list(@Param("businessAccountId", ParseIntPipe) businessAccountId: number) {
+    return this.inventoriesService.list(businessAccountId);
   }
 
   @Patch(":id")
   update(
-    @Param("storeId", ParseIntPipe) storeId: number,
+    @Param("businessAccountId", ParseIntPipe) businessAccountId: number,
     @Param("id", ParseIntPipe) id: number,
     @Req() req: Request,
     @Body() dto: UpdateInventoryDto,
   ) {
     const user = req.user as AuthenticatedUser;
-    return this.inventoriesService.update(storeId, id, user, dto);
+    return this.inventoriesService.update(businessAccountId, id, user, dto);
   }
 
   @Get(":id/transactions")
   listTransactions(
-    @Param("storeId", ParseIntPipe) storeId: number,
+    @Param("businessAccountId", ParseIntPipe) businessAccountId: number,
     @Param("id", ParseIntPipe) id: number,
   ) {
-    return this.inventoriesService.listTransactions(storeId, id);
+    return this.inventoriesService.listTransactions(businessAccountId, id);
   }
 }

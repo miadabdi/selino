@@ -110,9 +110,9 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     }
 
     const existingRequest =
-      await this.purchaseRequestsRepository.findLatestActiveRequestForUserStore(
+      await this.purchaseRequestsRepository.findLatestActiveRequestForUserBusinessAccount(
         userId,
-        inventory.storeId,
+        inventory.businessAccountId,
         new Date(),
       );
 
@@ -127,7 +127,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
           await this.purchaseRequestsRepository.createRequest(
             {
               requesterId: userId,
-              storeId: inventory.storeId,
+              businessAccountId: inventory.businessAccountId,
               status: "new",
               expiresAt,
             },
@@ -283,7 +283,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
 
       const invoice = await this.purchaseRequestsRepository.createInvoice(
         {
-          storeId: request.storeId!,
+          businessAccountId: request.businessAccountId!,
           buyerId: user.id,
           purchaseRequestId: request.id,
           invoiceNumber,

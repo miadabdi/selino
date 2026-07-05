@@ -9,7 +9,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { purchaseRequests } from "./purchase-requests.schema";
-import { stores } from "./stores.schema";
+import { businessAccounts } from "./business-accounts.schema";
 import { users } from "./users.schema";
 
 export const invoices = pgTable("invoices", {
@@ -22,9 +22,9 @@ export const invoices = pgTable("invoices", {
     .defaultNow()
     .$onUpdate(() => new Date()),
 
-  storeId: integer("store_id")
+  businessAccountId: integer("business_account_id")
     .notNull()
-    .references((): AnyPgColumn => stores.id),
+    .references((): AnyPgColumn => businessAccounts.id),
   buyerId: integer("buyer_id")
     .notNull()
     .references((): AnyPgColumn => users.id),

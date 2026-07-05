@@ -2,7 +2,11 @@ import { ConflictException, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import sharp from "sharp";
 import { AuthService } from "../auth/auth.service";
-import { AuthenticatedUser } from "../auth/interfaces/authenticated-user.interface";
+import {
+  AuthenticatedBusinessMembership,
+  AuthenticatedUser,
+  BusinessRole,
+} from "../auth/interfaces/authenticated-user.interface";
 import { users, type NewUser, type User } from "../database/schema/index";
 import { FilesService } from "../files/files.service";
 import { UpdateUserDto } from "./dto/update-user.dto";
@@ -30,9 +34,39 @@ export class UsersService {
   async findAuthenticatedById(
     id: number,
   ): Promise<AuthenticatedUser | undefined> {
-    return this.usersRepository.findAuthenticatedById(id) as Promise<
-      AuthenticatedUser | undefined
-    >;
+    const user = await this.usersRepository
+      .findAuthenticatedById(id)
+      .catch(() => this.usersRepository.findById(id));
+
+    if (!user) {
+      return undefined;
+    }
+
+    const rawBusinessMemberships =
+      "businessMemberships" in user ? user.businessMemberships : [];
+    const businessMemberships = await Promise.all(
+      rawBusinessMemberships.map((membership) =>
+        this.mapBusinessMembership(membership),
+      ),
+    );
+    const permissions = [
+      ...new Set(
+        businessMemberships.flatMap((membership) => membership.permissions),
+      ),
+    ].sort();
+    const role = this.resolvePrimaryRole(
+      user.isAdmin,
+      businessMemberships.map((membership) => membership.role),
+    );
+    const profilePictureUrl = await this.resolveProfilePictureUrl(user);
+
+    return {
+      ...user,
+      profilePictureUrl,
+      role,
+      permissions,
+      businessMemberships,
+    };
   }
 
   async findByPhone(phone: string): Promise<User | undefined> {
@@ -176,5 +210,52 @@ export class UsersService {
       })
       .jpeg({ quality: 85, mozjpeg: true })
       .toBuffer();
+  }
+
+  private async mapBusinessMembership(
+    membership: NonNullable<
+      Awaited<ReturnType<UsersRepository["findAuthenticatedById"]>>
+    >["businessMemberships"][number],
+  ): Promise<AuthenticatedBusinessMembership> {
+    const rolePermissions = membership.roleId
+      ? await this.usersRepository.listRolePermissionNames(membership.roleId)
+      : [];
+    const packagePermissions =
+      await this.usersRepository.listEnabledPermissionNames(
+        membership.businessAccountId,
+      );
+    const enabledPermissionSet = new Set(packagePermissions);
+    const permissions = rolePermissions
+      .filter((permission) => enabledPermissionSet.has(permission))
+      .filter((permission, index, all) => all.indexOf(permission) === index)
+      .sort();
+
+    return {
+      id: membership.id,
+      businessAccountId: membership.businessAccountId,
+      businessName: membership.businessAccount?.name ?? "",
+      role: membership.role?.name ?? "seller",
+      permissions,
+      isActive: membership.isActive,
+    };
+  }
+
+  private resolvePrimaryRole(
+    isAdmin: boolean,
+    membershipRoles: string[],
+  ): BusinessRole {
+    if (isAdmin) {
+      return "admin";
+    }
+
+    if (membershipRoles.includes("manager")) {
+      return "manager";
+    }
+
+    if (membershipRoles.includes("seller")) {
+      return "seller";
+    }
+
+    return null;
   }
 }

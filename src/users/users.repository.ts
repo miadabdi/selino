@@ -3,7 +3,16 @@ import { and, eq, isNull } from "drizzle-orm";
 import { AbstractRepository } from "../common/abstract.repository";
 import { DATABASE } from "../database/database.constants";
 import type { Database, TXContext } from "../database/database.types";
-import { users, type NewUser, type User } from "../database/schema/index";
+import {
+  businessSubscriptions,
+  featurePermissions,
+  packageFeatures,
+  permissions,
+  rolePermissions,
+  users,
+  type NewUser,
+  type User,
+} from "../database/schema/index";
 
 @Injectable()
 export class UsersRepository extends AbstractRepository {
@@ -20,18 +29,61 @@ export class UsersRepository extends AbstractRepository {
     });
   }
 
-  findAuthenticatedById(
-    id: number,
-    txContext: TXContext = this.db,
-  ): Promise<User | undefined> {
+  findAuthenticatedById(id: number, txContext: TXContext = this.db) {
     return txContext.query.users.findFirst({
       where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
       with: {
-        storeMemberships: {
+        businessMemberships: {
           where: (membership) => eq(membership.isActive, true),
+          with: {
+            role: true,
+            businessAccount: true,
+          },
         },
       },
     });
+  }
+
+  async listRolePermissionNames(
+    roleId: number,
+    txContext: TXContext = this.db,
+  ): Promise<string[]> {
+    const rows = await txContext
+      .select({ name: permissions.name })
+      .from(rolePermissions)
+      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+      .where(eq(rolePermissions.roleId, roleId));
+
+    return rows.map((row) => row.name);
+  }
+
+  async listEnabledPermissionNames(
+    businessAccountId: number,
+    txContext: TXContext = this.db,
+  ): Promise<string[]> {
+    const rows = await txContext
+      .select({ name: permissions.name })
+      .from(businessSubscriptions)
+      .innerJoin(
+        packageFeatures,
+        eq(packageFeatures.packageId, businessSubscriptions.packageId),
+      )
+      .innerJoin(
+        featurePermissions,
+        eq(featurePermissions.featureId, packageFeatures.featureId),
+      )
+      .innerJoin(
+        permissions,
+        eq(permissions.id, featurePermissions.permissionId),
+      )
+      .where(
+        and(
+          eq(businessSubscriptions.businessAccountId, businessAccountId),
+          eq(businessSubscriptions.isActive, true),
+        ),
+      );
+
+    return rows.map((row) => row.name);
   }
 
   findByPhone(

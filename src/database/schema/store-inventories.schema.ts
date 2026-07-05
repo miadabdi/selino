@@ -9,8 +9,8 @@ import {
   timestamp,
   unique,
 } from "drizzle-orm/pg-core";
+import { businessAccounts } from "./business-accounts.schema";
 import { products } from "./products.schema";
-import { stores } from "./stores.schema";
 import { users } from "./users.schema";
 
 export const storeInventories = pgTable(
@@ -25,9 +25,11 @@ export const storeInventories = pgTable(
       .defaultNow()
       .$onUpdate(() => new Date()),
 
-    storeId: integer("store_id")
+    businessAccountId: integer("business_account_id")
       .notNull()
-      .references((): AnyPgColumn => stores.id, { onDelete: "cascade" }),
+      .references((): AnyPgColumn => businessAccounts.id, {
+        onDelete: "cascade",
+      }),
     productId: integer("product_id")
       .notNull()
       .references((): AnyPgColumn => products.id),
@@ -47,8 +49,8 @@ export const storeInventories = pgTable(
     }),
   },
   (table) => [
-    unique("store_inventories_store_id_product_id_unique").on(
-      table.storeId,
+    unique("store_inventories_business_account_id_product_id_unique").on(
+      table.businessAccountId,
       table.productId,
     ),
   ],

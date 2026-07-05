@@ -37,5 +37,6 @@ coverage/
 .cache/
 .eslintcache
 route-information.json
+product-sample.json
 .agents/
 .codex-plugins/

@@ -2,6 +2,7 @@ import { subject } from "@casl/ability";
 import {
   HttpStatus,
   Injectable,
+  Logger,
   OnModuleDestroy,
   OnModuleInit,
 } from "@nestjs/common";
@@ -16,6 +17,7 @@ import { PurchaseRequestsRepository } from "./purchase-requests.repository";
 
 @Injectable()
 export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(PurchaseRequestsService.name);
   private intervalRef?: NodeJS.Timeout;
   private isRunningExpiry = false;
   private readonly requestExpiryCheckIntervalMs: number;
@@ -38,7 +40,12 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     this.intervalRef = setInterval(() => {
-      void this.expireOpenPurchaseRequests();
+      void this.expireOpenPurchaseRequests().catch((error: unknown) => {
+        this.logger.error(
+          "Failed to expire purchase requests",
+          error instanceof Error ? error.stack : String(error),
+        );
+      });
     }, this.requestExpiryCheckIntervalMs);
   }
 

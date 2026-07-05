@@ -7,6 +7,22 @@ import { HttpErrorFilter } from "./common/http-error.filter";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
+
+  const nodeEnv = configService.get<string>("NODE_ENV", "development");
+  const corsOrigins = configService
+    .get<string>(
+      "CORS_ORIGINS",
+      "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000",
+    )
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  app.enableCors({
+    origin: nodeEnv === "development" ? true : corsOrigins,
+    credentials: true,
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -28,7 +44,6 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup("api/docs", app, document);
 
-  const configService = app.get(ConfigService);
   await app.listen(configService.getOrThrow<number>("PORT"));
 }
 void bootstrap();

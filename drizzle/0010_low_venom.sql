@@ -1,0 +1,1 @@
+ALTER TABLE "store_inventories" ADD COLUMN "available_stock" integer GENERATED ALWAYS AS (stock - reserved_stock) STORED;

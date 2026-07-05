@@ -84,6 +84,11 @@ export function validateEnv(env: EnvInput): EnvOutput {
     ...env,
     NODE_ENV: readEnumValue(env, "NODE_ENV", NODE_ENVS, "development", errors),
     PORT: readPositiveInt(env, "PORT", 3000, errors),
+    CORS_ORIGINS: readOptionalString(
+      env,
+      "CORS_ORIGINS",
+      "http://localhost:5173,http://127.0.0.1:5173",
+    ),
 
     DATABASE_URL: readRequiredString(env, "DATABASE_URL", errors),
     POSTGRES_DB: readOptionalString(env, "POSTGRES_DB", "selino"),

@@ -36,3 +36,6 @@ coverage/
 *.log
 .cache/
 .eslintcache
+route-information.json
+.agents/
+.codex-plugins/

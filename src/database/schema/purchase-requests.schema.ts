@@ -14,6 +14,7 @@ import { users } from "./users.schema";
 
 export const purchaseRequestStatusEnum = pgEnum("purchase_request_status", [
   "new",
+  "pending_credit_approval",
   "confirmed",
   "cancelled",
   "expired",

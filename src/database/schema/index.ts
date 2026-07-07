@@ -23,5 +23,6 @@ export * from "./role-permissions.schema";
 export * from "./roles.schema";
 export * from "./store-inventories.schema";
 export * from "./store-inventory-transactions.schema";
+export * from "./trade-credit-agreements.schema";
 export * from "./users.schema";
 export * from "./relations";

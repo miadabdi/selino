@@ -24,6 +24,14 @@ import { rolePermissions } from "./role-permissions.schema";
 import { roles } from "./roles.schema";
 import { storeInventories } from "./store-inventories.schema";
 import { storeInventoryTransactions } from "./store-inventory-transactions.schema";
+import {
+  tradeCreditAgreementSignatures,
+  tradeCreditAgreements,
+  tradeCreditAuditLogs,
+  tradeCreditApprovalRequests,
+  tradeCreditSettlements,
+  tradeCreditTransactions,
+} from "./trade-credit-agreements.schema";
 import { users } from "./users.schema";
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -36,6 +44,20 @@ export const usersRelations = relations(users, ({ many }) => ({
   businessMemberships: many(businessMembers),
   storeInventories: many(storeInventories),
   storeInventoryTransactions: many(storeInventoryTransactions),
+  createdTradeCreditAgreements: many(tradeCreditAgreements),
+  tradeCreditTransactions: many(tradeCreditTransactions),
+  confirmedTradeCreditSettlements: many(tradeCreditSettlements),
+  tradeCreditAgreementSignatures: many(tradeCreditAgreementSignatures),
+  tradeCreditAuditLogs: many(tradeCreditAuditLogs),
+  requestedTradeCreditApprovals: many(tradeCreditApprovalRequests, {
+    relationName: "trade_credit_approval_requested_by",
+  }),
+  approvedTradeCreditApprovals: many(tradeCreditApprovalRequests, {
+    relationName: "trade_credit_approval_approved_by",
+  }),
+  rejectedTradeCreditApprovals: many(tradeCreditApprovalRequests, {
+    relationName: "trade_credit_approval_rejected_by",
+  }),
 }));
 
 export const authOtpsRelations = relations(authOtps, ({ one }) => ({
@@ -113,6 +135,15 @@ export const businessAccountsRelations = relations(
     purchaseRequests: many(purchaseRequests),
     invoices: many(invoices),
     subscriptions: many(businessSubscriptions),
+    tradeCreditAgreementsAsBuyer: many(tradeCreditAgreements, {
+      relationName: "trade_credit_agreement_buyer",
+    }),
+    tradeCreditAgreementsAsSupplier: many(tradeCreditAgreements, {
+      relationName: "trade_credit_agreement_supplier",
+    }),
+    tradeCreditAgreementSignatures: many(tradeCreditAgreementSignatures),
+    tradeCreditAuditLogs: many(tradeCreditAuditLogs),
+    tradeCreditApprovalRequests: many(tradeCreditApprovalRequests),
   }),
 );
 
@@ -182,6 +213,7 @@ export const purchaseRequestsRelations = relations(
     }),
     items: many(purchaseRequestItems),
     invoices: many(invoices),
+    tradeCreditApprovalRequests: many(tradeCreditApprovalRequests),
   }),
 );
 
@@ -233,6 +265,132 @@ export const invoiceItemsRelations = relations(invoiceItems, ({ one }) => ({
     references: [storeInventories.id],
   }),
 }));
+
+export const tradeCreditAgreementsRelations = relations(
+  tradeCreditAgreements,
+  ({ one, many }) => ({
+    buyerBusinessAccount: one(businessAccounts, {
+      fields: [tradeCreditAgreements.buyerBusinessAccountId],
+      references: [businessAccounts.id],
+      relationName: "trade_credit_agreement_buyer",
+    }),
+    supplierBusinessAccount: one(businessAccounts, {
+      fields: [tradeCreditAgreements.supplierBusinessAccountId],
+      references: [businessAccounts.id],
+      relationName: "trade_credit_agreement_supplier",
+    }),
+    createdByUser: one(users, {
+      fields: [tradeCreditAgreements.createdBy],
+      references: [users.id],
+    }),
+    transactions: many(tradeCreditTransactions),
+    settlements: many(tradeCreditSettlements),
+    signatures: many(tradeCreditAgreementSignatures),
+    auditLogs: many(tradeCreditAuditLogs),
+    approvalRequests: many(tradeCreditApprovalRequests),
+  }),
+);
+
+export const tradeCreditApprovalRequestsRelations = relations(
+  tradeCreditApprovalRequests,
+  ({ one }) => ({
+    agreement: one(tradeCreditAgreements, {
+      fields: [tradeCreditApprovalRequests.agreementId],
+      references: [tradeCreditAgreements.id],
+    }),
+    purchaseRequest: one(purchaseRequests, {
+      fields: [tradeCreditApprovalRequests.purchaseRequestId],
+      references: [purchaseRequests.id],
+    }),
+    invoice: one(invoices, {
+      fields: [tradeCreditApprovalRequests.invoiceId],
+      references: [invoices.id],
+    }),
+    requestedByUser: one(users, {
+      fields: [tradeCreditApprovalRequests.requestedBy],
+      references: [users.id],
+      relationName: "trade_credit_approval_requested_by",
+    }),
+    ownerBusinessAccount: one(businessAccounts, {
+      fields: [tradeCreditApprovalRequests.ownerBusinessAccountId],
+      references: [businessAccounts.id],
+    }),
+    approvedByUser: one(users, {
+      fields: [tradeCreditApprovalRequests.approvedBy],
+      references: [users.id],
+      relationName: "trade_credit_approval_approved_by",
+    }),
+    rejectedByUser: one(users, {
+      fields: [tradeCreditApprovalRequests.rejectedBy],
+      references: [users.id],
+      relationName: "trade_credit_approval_rejected_by",
+    }),
+  }),
+);
+
+export const tradeCreditTransactionsRelations = relations(
+  tradeCreditTransactions,
+  ({ one }) => ({
+    agreement: one(tradeCreditAgreements, {
+      fields: [tradeCreditTransactions.agreementId],
+      references: [tradeCreditAgreements.id],
+    }),
+    createdByUser: one(users, {
+      fields: [tradeCreditTransactions.createdBy],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const tradeCreditSettlementsRelations = relations(
+  tradeCreditSettlements,
+  ({ one }) => ({
+    agreement: one(tradeCreditAgreements, {
+      fields: [tradeCreditSettlements.agreementId],
+      references: [tradeCreditAgreements.id],
+    }),
+    confirmedByUser: one(users, {
+      fields: [tradeCreditSettlements.confirmedBy],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const tradeCreditAgreementSignaturesRelations = relations(
+  tradeCreditAgreementSignatures,
+  ({ one }) => ({
+    agreement: one(tradeCreditAgreements, {
+      fields: [tradeCreditAgreementSignatures.agreementId],
+      references: [tradeCreditAgreements.id],
+    }),
+    businessAccount: one(businessAccounts, {
+      fields: [tradeCreditAgreementSignatures.businessAccountId],
+      references: [businessAccounts.id],
+    }),
+    signedByUser: one(users, {
+      fields: [tradeCreditAgreementSignatures.signedBy],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const tradeCreditAuditLogsRelations = relations(
+  tradeCreditAuditLogs,
+  ({ one }) => ({
+    agreement: one(tradeCreditAgreements, {
+      fields: [tradeCreditAuditLogs.agreementId],
+      references: [tradeCreditAgreements.id],
+    }),
+    actorUser: one(users, {
+      fields: [tradeCreditAuditLogs.actorUserId],
+      references: [users.id],
+    }),
+    actorBusinessAccount: one(businessAccounts, {
+      fields: [tradeCreditAuditLogs.actorBusinessAccountId],
+      references: [businessAccounts.id],
+    }),
+  }),
+);
 
 export const notificationsRelations = relations(
   notifications,

@@ -12,6 +12,7 @@ import type { AuthenticatedUser } from "../auth/interfaces/index";
 import { throwHttpError } from "../common/http-error";
 import { InventoriesRepository } from "../inventories/inventories.repository";
 import { StoreInventoryTransactionsRepository } from "../inventories/store-inventory-transactions.repository";
+import { TradeNetworkService } from "../trade-network/trade-network.service";
 import { AddPurchaseRequestItemDto } from "./dto/add-purchase-request-item.dto";
 import { PurchaseRequestsRepository } from "./purchase-requests.repository";
 
@@ -29,6 +30,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     private readonly storeInventoryTransactionsRepository: StoreInventoryTransactionsRepository,
     private readonly caslAbilityFactory: CaslAbilityFactory,
     private readonly configService: ConfigService,
+    private readonly tradeNetworkService: TradeNetworkService,
   ) {
     this.requestExpiryCheckIntervalMs = this.configService.getOrThrow<number>(
       "PURCHASE_REQUEST_EXPIRY_CHECK_INTERVAL_MS",
@@ -72,6 +74,14 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
         "You do not have permission for this action",
       );
     }
+  }
+
+  private resolveBuyerBusinessAccountId(user: AuthenticatedUser) {
+    const membership = user.businessMemberships.find(
+      (item) => item.isActive === true,
+    );
+
+    return membership?.businessAccountId ?? null;
   }
 
   async addItem(userId: number, dto: AddPurchaseRequestItemDto) {
@@ -279,6 +289,31 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     }
 
     return this.purchaseRequestsRepository.transaction(async (tx) => {
+      const buyerBusinessAccountId = this.resolveBuyerBusinessAccountId(user);
+      if (buyerBusinessAccountId != null && request.businessAccountId != null) {
+        const creditDecision =
+          await this.tradeNetworkService.prepareCreditPurchase(
+            user,
+            buyerBusinessAccountId,
+            request.businessAccountId,
+            request.totalAmount,
+            request.id,
+            tx,
+          );
+
+        if (creditDecision.status === "pending_approval") {
+          await this.purchaseRequestsRepository.setRequestPendingCreditApproval(
+            request.id,
+            tx,
+          );
+
+          return {
+            requiresCreditApproval: true,
+            approvalRequest: creditDecision.approvalRequest,
+          };
+        }
+      }
+
       const invoiceNumber = `INV-${Date.now()}-${request.id}`;
 
       const invoice = await this.purchaseRequestsRepository.createInvoice(
@@ -328,6 +363,18 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
           "sale",
           `invoice:${invoice.id}`,
           user.id,
+          tx,
+        );
+      }
+
+      if (buyerBusinessAccountId != null && request.businessAccountId != null) {
+        await this.tradeNetworkService.recordCreditPurchase(
+          user,
+          buyerBusinessAccountId,
+          request.businessAccountId,
+          request.totalAmount,
+          "invoice",
+          invoice.id,
           tx,
         );
       }

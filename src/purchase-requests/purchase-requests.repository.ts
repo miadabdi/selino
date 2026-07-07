@@ -234,6 +234,16 @@ export class PurchaseRequestsRepository extends AbstractRepository {
       .where(eq(purchaseRequests.id, purchaseRequestId));
   }
 
+  async setRequestPendingCreditApproval(
+    purchaseRequestId: number,
+    txContext: TXContext = this.db,
+  ): Promise<void> {
+    await txContext
+      .update(purchaseRequests)
+      .set({ status: "pending_credit_approval", updatedAt: new Date() })
+      .where(eq(purchaseRequests.id, purchaseRequestId));
+  }
+
   findExpiredOpenRequestIds(now: Date, txContext: TXContext = this.db) {
     return txContext.query.purchaseRequests.findMany({
       columns: {

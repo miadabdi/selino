@@ -14,6 +14,7 @@ import { PurchaseRequestsModule } from "./purchase-requests/purchase-requests.mo
 import { RabbitmqModule } from "./rabbitmq/rabbitmq.module";
 import { StorageModule } from "./storage/storage.module";
 import { BusinessAccountsModule } from "./business-accounts/business-accounts.module";
+import { TradeNetworkModule } from "./trade-network/trade-network.module";
 import { UsersModule } from "./users/users.module";
 
 @Module({
@@ -35,6 +36,7 @@ import { UsersModule } from "./users/users.module";
     ProductsModule,
     InventoriesModule,
     PurchaseRequestsModule,
+    TradeNetworkModule,
   ],
   controllers: [AppController],
   providers: [AppService],

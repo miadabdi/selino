@@ -18,6 +18,7 @@ import {
   products,
   rolePermissions,
   roles,
+  storeInventories,
   users,
   type Brand,
   type BusinessAccount,
@@ -180,6 +181,13 @@ const seedBusinessAccount = {
   slug: "selino-demo-business",
   type: "store" as const,
   description: "حساب کسب و کار آزمایشی برای تست پنل فارسی",
+};
+
+const seedSupplierBusinessAccount = {
+  name: "تامین کننده آزمایشی سلینو",
+  slug: "selino-demo-supplier",
+  type: "company" as const,
+  description: "حساب تامین کننده آزمایشی برای موجود کردن محصولات نمونه",
 };
 
 const seedMemberships = [
@@ -390,17 +398,30 @@ async function upsertUser(
 }
 
 async function upsertBusinessAccount(db: SeedDb): Promise<BusinessAccount> {
+  return upsertBusinessAccountData(db, seedBusinessAccount);
+}
+
+async function upsertSupplierBusinessAccount(
+  db: SeedDb,
+): Promise<BusinessAccount> {
+  return upsertBusinessAccountData(db, seedSupplierBusinessAccount);
+}
+
+async function upsertBusinessAccountData(
+  db: SeedDb,
+  data: typeof seedBusinessAccount | typeof seedSupplierBusinessAccount,
+): Promise<BusinessAccount> {
   const existing = await db.query.businessAccounts.findFirst({
-    where: (table) => eq(table.slug, seedBusinessAccount.slug),
+    where: (table) => eq(table.slug, data.slug),
   });
 
   if (existing) {
     const [updated] = await db
       .update(businessAccounts)
       .set({
-        name: seedBusinessAccount.name,
-        type: seedBusinessAccount.type,
-        description: seedBusinessAccount.description,
+        name: data.name,
+        type: data.type,
+        description: data.description,
         updatedAt: new Date(),
       })
       .where(eq(businessAccounts.id, existing.id))
@@ -409,10 +430,7 @@ async function upsertBusinessAccount(db: SeedDb): Promise<BusinessAccount> {
     return updated;
   }
 
-  const [created] = await db
-    .insert(businessAccounts)
-    .values(seedBusinessAccount)
-    .returning();
+  const [created] = await db.insert(businessAccounts).values(data).returning();
 
   return created;
 }
@@ -679,6 +697,48 @@ async function upsertCatalogProduct(
   return created;
 }
 
+function getDemoInventoryValues(productId: number, index: number) {
+  return {
+    price: 10_000_000 + index * 750_000 + (productId % 10) * 125_000,
+    stock: 5 + (index % 8),
+    reservedStock: 0,
+    minOrderQty: 1,
+    maxOrderQty: 5 + (index % 4),
+    isActive: true,
+    visible: true,
+  };
+}
+
+async function upsertDemoInventory(
+  db: SeedDb,
+  supplierBusinessAccountId: number,
+  product: Product,
+  index: number,
+) {
+  const values = getDemoInventoryValues(product.id, index);
+  const existing = await db.query.storeInventories.findFirst({
+    where: (table) =>
+      and(
+        eq(table.businessAccountId, supplierBusinessAccountId),
+        eq(table.productId, product.id),
+      ),
+  });
+
+  if (existing) {
+    await db
+      .update(storeInventories)
+      .set({ ...values, updatedAt: new Date() })
+      .where(eq(storeInventories.id, existing.id));
+    return;
+  }
+
+  await db.insert(storeInventories).values({
+    businessAccountId: supplierBusinessAccountId,
+    productId: product.id,
+    ...values,
+  });
+}
+
 async function resetSerialSequence(
   db: SeedDb,
   tableName: string,
@@ -689,7 +749,10 @@ async function resetSerialSequence(
   );
 }
 
-async function seedCatalogFromProductSample(db: SeedDb) {
+async function seedCatalogFromProductSample(
+  db: SeedDb,
+  supplierBusinessAccount: BusinessAccount,
+) {
   const sample = loadProductSample();
   if (!sample) {
     return;
@@ -712,13 +775,16 @@ async function seedCatalogFromProductSample(db: SeedDb) {
     categoryIdBySeedId.set(categorySeed.id, category.id);
   }
 
-  for (const productSeed of sample.tables.products) {
-    await upsertCatalogProduct(
+  const productRecords: Product[] = [];
+  for (const [index, productSeed] of sample.tables.products.entries()) {
+    const product = await upsertCatalogProduct(
       db,
       productSeed,
       brandIdBySeedId,
       categoryIdBySeedId,
     );
+    productRecords.push(product);
+    await upsertDemoInventory(db, supplierBusinessAccount.id, product, index);
   }
 
   await resetSerialSequence(db, "brands");
@@ -726,7 +792,7 @@ async function seedCatalogFromProductSample(db: SeedDb) {
   await resetSerialSequence(db, "products");
 
   console.log(
-    `Seeded catalog sample: ${sample.tables.brands.length} brands, ${sample.tables.categories.length} categories, ${sample.tables.products.length} products.`,
+    `Seeded catalog sample: ${sample.tables.brands.length} brands, ${sample.tables.categories.length} categories, ${sample.tables.products.length} products, ${productRecords.length} inventory offers.`,
   );
 }
 
@@ -803,7 +869,13 @@ async function main() {
   }
 
   const businessAccount = await upsertBusinessAccount(db);
+  const supplierBusinessAccount = await upsertSupplierBusinessAccount(db);
   await ensureActiveSubscription(db, businessAccount, packageByKey.get("pro")!);
+  await ensureActiveSubscription(
+    db,
+    supplierBusinessAccount,
+    packageByKey.get("pro")!,
+  );
 
   for (const membership of seedMemberships) {
     await ensureBusinessMembership(
@@ -814,7 +886,7 @@ async function main() {
     );
   }
 
-  await seedCatalogFromProductSample(db);
+  await seedCatalogFromProductSample(db, supplierBusinessAccount);
 
   await connection.end();
 }

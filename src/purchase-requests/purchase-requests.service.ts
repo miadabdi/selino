@@ -13,7 +13,11 @@ import { throwHttpError } from "../common/http-error";
 import { InventoriesRepository } from "../inventories/inventories.repository";
 import { StoreInventoryTransactionsRepository } from "../inventories/store-inventory-transactions.repository";
 import { TradeNetworkService } from "../trade-network/trade-network.service";
+import type { Invoice } from "../database/schema/index";
+import { NotificationService } from "../notification/notification.service";
+import { NotificationChannel } from "../notification/notification.enums";
 import { AddPurchaseRequestItemDto } from "./dto/add-purchase-request-item.dto";
+import type { ListPurchaseRequestsQueryDto } from "./dto/list-purchase-requests-query.dto";
 import { PurchaseRequestsRepository } from "./purchase-requests.repository";
 
 @Injectable()
@@ -31,6 +35,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     private readonly caslAbilityFactory: CaslAbilityFactory,
     private readonly configService: ConfigService,
     private readonly tradeNetworkService: TradeNetworkService,
+    private readonly notificationService: NotificationService,
   ) {
     this.requestExpiryCheckIntervalMs = this.configService.getOrThrow<number>(
       "PURCHASE_REQUEST_EXPIRY_CHECK_INTERVAL_MS",
@@ -59,13 +64,13 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
 
   private assertPurchaseRequestCasl(
     user: AuthenticatedUser,
-    requesterId: number,
+    buyerBusinessAccountId: number,
     action: Action,
   ) {
     const ability = this.caslAbilityFactory.createForUser(user);
     const canUpdatePurchaseRequest = ability.can(
       action,
-      subject("PurchaseRequest", { requesterId }),
+      subject("PurchaseRequest", { buyerBusinessAccountId }),
     );
 
     if (!canUpdatePurchaseRequest) {
@@ -76,15 +81,52 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private resolveBuyerBusinessAccountId(user: AuthenticatedUser) {
+  private assertActiveBusinessMembership(
+    user: AuthenticatedUser,
+    businessAccountId: number,
+  ) {
     const membership = user.businessMemberships.find(
+      (item) =>
+        item.isActive === true && item.businessAccountId === businessAccountId,
+    );
+    if (!membership && user.isAdmin !== true) {
+      throwHttpError(
+        HttpStatus.FORBIDDEN,
+        "Active buyer business membership is required",
+      );
+    }
+  }
+
+  private resolveSingleActiveBusinessAccountId(user: AuthenticatedUser) {
+    const memberships = user.businessMemberships.filter(
       (item) => item.isActive === true,
     );
 
-    return membership?.businessAccountId ?? null;
+    if (memberships.length === 0) {
+      throwHttpError(
+        HttpStatus.FORBIDDEN,
+        "Active buyer business membership is required",
+      );
+    }
+
+    if (memberships.length > 1) {
+      throwHttpError(
+        HttpStatus.CONFLICT,
+        "User has multiple active business memberships",
+      );
+    }
+
+    return memberships[0].businessAccountId;
   }
 
-  async addItem(userId: number, dto: AddPurchaseRequestItemDto) {
+  async addItem(user: AuthenticatedUser, dto: AddPurchaseRequestItemDto) {
+    this.assertActiveBusinessMembership(user, dto.buyerBusinessAccountId);
+    this.assertPurchaseRequestCasl(
+      user,
+      dto.buyerBusinessAccountId,
+      Action.Create,
+    );
+
     const inventory = await this.inventoriesRepository.findInventoryById(
       dto.storeInventoryId,
     );
@@ -99,7 +141,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
 
     const activeReservationRows =
       await this.purchaseRequestsRepository.findActiveReservationRows(
-        userId,
+        user.id,
         dto.storeInventoryId,
         new Date(),
       );
@@ -120,9 +162,9 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     }
 
     const existingRequest =
-      await this.purchaseRequestsRepository.findLatestActiveRequestForUserBusinessAccount(
-        userId,
-        inventory.businessAccountId,
+      await this.purchaseRequestsRepository.findLatestActiveRequestForBuyerBusinessAccount(
+        user.id,
+        dto.buyerBusinessAccountId,
         new Date(),
       );
 
@@ -136,8 +178,8 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
         const createdRequest =
           await this.purchaseRequestsRepository.createRequest(
             {
-              requesterId: userId,
-              businessAccountId: inventory.businessAccountId,
+              requesterId: user.id,
+              buyerBusinessAccountId: dto.buyerBusinessAccountId,
               status: "new",
               expiresAt,
             },
@@ -196,7 +238,12 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
     }
 
-    this.assertPurchaseRequestCasl(user, request.requesterId, Action.Update);
+    this.assertActiveBusinessMembership(user, request.buyerBusinessAccountId);
+    this.assertPurchaseRequestCasl(
+      user,
+      request.buyerBusinessAccountId,
+      Action.Update,
+    );
 
     if (request.status !== "new") {
       throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
@@ -207,7 +254,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
         await this.purchaseRequestsRepository.deleteItemForOpenRequest(
           item.id,
           item.purchaseRequestId,
-          request.requesterId,
+          request.buyerBusinessAccountId,
           tx,
         );
 
@@ -249,11 +296,41 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async getActive(userId: number) {
+  async getActive(user: AuthenticatedUser, buyerBusinessAccountId: number) {
+    this.assertActiveBusinessMembership(user, buyerBusinessAccountId);
     return (
       (await this.purchaseRequestsRepository.findActiveWithItemsByRequester(
-        userId,
+        user.id,
+        buyerBusinessAccountId,
       )) ?? null
+    );
+  }
+
+  list(user: AuthenticatedUser, query: ListPurchaseRequestsQueryDto) {
+    if (user.isAdmin === true) {
+      return this.purchaseRequestsRepository.listByBuyerBusiness(
+        query.buyerBusinessAccountId,
+        query.page,
+        query.limit,
+      );
+    }
+
+    const buyerBusinessAccountId =
+      this.resolveSingleActiveBusinessAccountId(user);
+    if (
+      query.buyerBusinessAccountId != null &&
+      query.buyerBusinessAccountId !== buyerBusinessAccountId
+    ) {
+      throwHttpError(
+        HttpStatus.FORBIDDEN,
+        "Active buyer business membership is required",
+      );
+    }
+
+    return this.purchaseRequestsRepository.listByBuyerBusiness(
+      buyerBusinessAccountId,
+      query.page,
+      query.limit,
     );
   }
 
@@ -267,12 +344,18 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    this.assertPurchaseRequestCasl(user, request.requesterId, Action.Update);
+    this.assertActiveBusinessMembership(user, request.buyerBusinessAccountId);
+    this.assertPurchaseRequestCasl(
+      user,
+      request.buyerBusinessAccountId,
+      Action.Update,
+    );
 
     if (
-      request.status !== "new" ||
-      request.expiresAt == null ||
-      request.expiresAt <= new Date()
+      request.status !== "confirmed" &&
+      (request.status !== "new" ||
+        request.expiresAt == null ||
+        request.expiresAt <= new Date())
     ) {
       throwHttpError(
         HttpStatus.CONFLICT,
@@ -280,109 +363,231 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    const items = await this.purchaseRequestsRepository.listItemsByRequestId(
-      request.id,
-    );
+    const result = await this.purchaseRequestsRepository.transaction(
+      async (tx) => {
+        const lockedRequest =
+          await this.purchaseRequestsRepository.findByIdForUpdate(id, tx);
 
-    if (items.length === 0) {
-      throwHttpError(HttpStatus.BAD_REQUEST, "Purchase request has no items");
-    }
+        if (!lockedRequest) {
+          throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");
+        }
 
-    return this.purchaseRequestsRepository.transaction(async (tx) => {
-      const buyerBusinessAccountId = this.resolveBuyerBusinessAccountId(user);
-      if (buyerBusinessAccountId != null && request.businessAccountId != null) {
-        const creditDecision =
-          await this.tradeNetworkService.prepareCreditPurchase(
-            user,
-            buyerBusinessAccountId,
-            request.businessAccountId,
-            request.totalAmount,
-            request.id,
-            tx,
-          );
-
-        if (creditDecision.status === "pending_approval") {
-          await this.purchaseRequestsRepository.setRequestPendingCreditApproval(
-            request.id,
-            tx,
-          );
-
+        if (lockedRequest.status === "confirmed") {
           return {
-            requiresCreditApproval: true,
-            approvalRequest: creditDecision.approvalRequest,
+            purchaseRequestId: lockedRequest.id,
+            status: lockedRequest.status,
+            invoices:
+              await this.purchaseRequestsRepository.listInvoicesByPurchaseRequestId(
+                lockedRequest.id,
+                tx,
+              ),
+            notifySuppliers: false,
           };
         }
-      }
 
-      const invoiceNumber = `INV-${Date.now()}-${request.id}`;
-
-      const invoice = await this.purchaseRequestsRepository.createInvoice(
-        {
-          businessAccountId: request.businessAccountId!,
-          buyerId: user.id,
-          purchaseRequestId: request.id,
-          invoiceNumber,
-          status: "pending",
-          totalAmount: request.totalAmount,
-          currency: "IRR",
-        },
-        tx,
-      );
-
-      for (const item of items) {
-        await this.purchaseRequestsRepository.createInvoiceItem(
-          {
-            invoiceId: invoice.id,
-            productId: item.productId,
-            storeInventoryId: item.storeInventoryId,
-            description: null,
-            qty: item.qty,
-            unitPrice: item.price,
-            total: item.total,
-          },
-          tx,
-        );
-
-        if (item.storeInventoryId == null) {
-          throwHttpError(HttpStatus.CONFLICT, "Inventory linkage missing");
+        if (
+          lockedRequest.status !== "new" ||
+          lockedRequest.expiresAt == null ||
+          lockedRequest.expiresAt <= new Date()
+        ) {
+          throwHttpError(
+            HttpStatus.CONFLICT,
+            "Purchase request is invalid, expired, or already processed",
+          );
         }
 
-        const consumed = await this.inventoriesRepository.consumeReservedStock(
-          item.storeInventoryId,
-          item.qty,
-          tx,
-        );
-
-        if (consumed.length === 0) {
-          throwHttpError(HttpStatus.CONFLICT, "Insufficient stock for sale");
-        }
-
-        await this.storeInventoryTransactionsRepository.create(
-          item.storeInventoryId,
-          -item.qty,
-          "sale",
-          `invoice:${invoice.id}`,
-          user.id,
-          tx,
-        );
-      }
-
-      if (buyerBusinessAccountId != null && request.businessAccountId != null) {
-        await this.tradeNetworkService.recordCreditPurchase(
+        this.assertActiveBusinessMembership(
           user,
-          buyerBusinessAccountId,
-          request.businessAccountId,
-          request.totalAmount,
-          "invoice",
-          invoice.id,
+          lockedRequest.buyerBusinessAccountId,
+        );
+
+        const items =
+          await this.purchaseRequestsRepository.listItemsByRequestId(
+            lockedRequest.id,
+            tx,
+          );
+        if (items.length === 0) {
+          throwHttpError(
+            HttpStatus.BAD_REQUEST,
+            "Purchase request has no items",
+          );
+        }
+
+        const groups = new Map<number, typeof items>();
+        for (const item of items) {
+          if (item.storeInventoryId == null || !item.storeInventory) {
+            throwHttpError(HttpStatus.CONFLICT, "Inventory linkage missing");
+          }
+          const supplierId = item.storeInventory.businessAccountId;
+          groups.set(supplierId, [...(groups.get(supplierId) ?? []), item]);
+        }
+
+        const createdInvoices: Invoice[] = [];
+        for (const [supplierBusinessAccountId, supplierItems] of groups) {
+          const supplierTotal = supplierItems.reduce(
+            (sum, item) => sum + item.total,
+            0,
+          );
+          const invoice = await this.purchaseRequestsRepository.createInvoice(
+            {
+              supplierBusinessAccountId,
+              buyerBusinessAccountId: lockedRequest.buyerBusinessAccountId,
+              buyerId: user.id,
+              purchaseRequestId: lockedRequest.id,
+              status: "pending",
+              totalAmount: supplierTotal,
+              currency: "IRR",
+            },
+            tx,
+          );
+
+          for (const item of supplierItems) {
+            await this.purchaseRequestsRepository.createInvoiceItem(
+              {
+                invoiceId: invoice.id,
+                productId: item.productId,
+                storeInventoryId: item.storeInventoryId,
+                description: null,
+                qty: item.qty,
+                unitPrice: item.price,
+                total: item.total,
+              },
+              tx,
+            );
+          }
+
+          const creditDecision =
+            await this.tradeNetworkService.prepareCreditPurchase(
+              user,
+              lockedRequest.buyerBusinessAccountId,
+              supplierBusinessAccountId,
+              supplierTotal,
+              lockedRequest.id,
+              invoice.id,
+              tx,
+            );
+
+          if (creditDecision.status === "pending_approval") {
+            const pendingInvoice =
+              await this.purchaseRequestsRepository.setInvoiceStatus(
+                invoice.id,
+                "pending_credit_approval",
+                tx,
+              );
+            createdInvoices.push(pendingInvoice);
+            continue;
+          }
+
+          for (const item of supplierItems) {
+            const consumed =
+              await this.inventoriesRepository.consumeReservedStock(
+                item.storeInventoryId!,
+                item.qty,
+                tx,
+              );
+            if (consumed.length === 0) {
+              throwHttpError(
+                HttpStatus.CONFLICT,
+                "Insufficient stock for sale",
+              );
+            }
+            await this.storeInventoryTransactionsRepository.create(
+              item.storeInventoryId!,
+              -item.qty,
+              "sale",
+              `invoice:${invoice.id}`,
+              user.id,
+              tx,
+            );
+          }
+          await this.tradeNetworkService.recordCreditPurchase(
+            user,
+            lockedRequest.buyerBusinessAccountId,
+            supplierBusinessAccountId,
+            supplierTotal,
+            "invoice",
+            invoice.id,
+            tx,
+          );
+          createdInvoices.push(invoice);
+        }
+
+        await this.purchaseRequestsRepository.setRequestConfirmed(
+          lockedRequest.id,
           tx,
         );
+
+        return {
+          purchaseRequestId: lockedRequest.id,
+          status: "confirmed" as const,
+          invoices: createdInvoices,
+          notifySuppliers: true,
+        };
+      },
+    );
+
+    if (result.notifySuppliers) {
+      await this.notifySupplierInvoiceStates(result.invoices);
+    }
+    return {
+      purchaseRequestId: result.purchaseRequestId,
+      status: result.status,
+      invoices: result.invoices,
+    };
+  }
+
+  private async notifySupplierInvoiceStates(invoicesToNotify: Invoice[]) {
+    const deliveries: Promise<void>[] = [];
+    for (const invoice of invoicesToNotify) {
+      const approvalRequired = invoice.status === "pending_credit_approval";
+      const recipients =
+        await this.purchaseRequestsRepository.listActiveSellerRecipients(
+          invoice.supplierBusinessAccountId,
+        );
+      for (const recipient of recipients) {
+        const options = {
+          userId: recipient.id,
+          type: approvalRequired
+            ? "credit_approval_required"
+            : "invoice_created",
+          title: approvalRequired
+            ? "تایید خرید مازاد بر اعتبار"
+            : "فاکتور فروش جدید",
+          body: approvalRequired
+            ? `فاکتور ${invoice.invoiceNumber} به تایید اعتبار شما نیاز دارد.`
+            : `فاکتور ${invoice.invoiceNumber} برای شما ایجاد شد.`,
+        };
+        if (recipient.isPhoneVerified) {
+          deliveries.push(
+            this.notificationService.send({
+              ...options,
+              channel: NotificationChannel.SMS,
+              destination: recipient.phone,
+            }),
+          );
+        }
+        if (recipient.isEmailVerified && recipient.email) {
+          deliveries.push(
+            this.notificationService.send({
+              ...options,
+              channel: NotificationChannel.EMAIL,
+              destination: recipient.email,
+            }),
+          );
+        }
       }
-
-      await this.purchaseRequestsRepository.setRequestConfirmed(request.id, tx);
-
-      return invoice;
-    });
+    }
+    const outcomes = await Promise.allSettled(deliveries);
+    for (const outcome of outcomes) {
+      if (outcome.status === "rejected") {
+        this.logger.error(
+          "Failed to queue supplier notification",
+          outcome.reason instanceof Error
+            ? outcome.reason.stack
+            : String(outcome.reason),
+        );
+      }
+    }
   }
 
   async cancel(user: AuthenticatedUser, id: number) {
@@ -392,7 +597,12 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");
     }
 
-    this.assertPurchaseRequestCasl(user, request.requesterId, Action.Update);
+    this.assertActiveBusinessMembership(user, request.buyerBusinessAccountId);
+    this.assertPurchaseRequestCasl(
+      user,
+      request.buyerBusinessAccountId,
+      Action.Update,
+    );
 
     if (request.status !== "new") {
       throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");

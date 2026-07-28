@@ -50,7 +50,14 @@ export class CaslAbilityFactory {
       });
     }
 
-    can(Action.Update, "PurchaseRequest", { requesterId: user.id });
+    if (writableBusinessAccountIds.length > 0) {
+      can(Action.Create, "PurchaseRequest", {
+        buyerBusinessAccountId: { $in: writableBusinessAccountIds },
+      });
+      can(Action.Update, "PurchaseRequest", {
+        buyerBusinessAccountId: { $in: writableBusinessAccountIds },
+      });
+    }
 
     return build();
   }

@@ -49,9 +49,9 @@ export class PurchaseRequestsRepository extends AbstractRepository {
       .then((rows) => rows.flatMap((row) => row.items));
   }
 
-  async findLatestActiveRequestForUserBusinessAccount(
+  async findLatestActiveRequestForBuyerBusinessAccount(
     userId: number,
-    businessAccountId: number,
+    buyerBusinessAccountId: number,
     now: Date,
     txContext: TXContext = this.db,
   ) {
@@ -59,7 +59,7 @@ export class PurchaseRequestsRepository extends AbstractRepository {
       where: (table) =>
         and(
           eq(table.requesterId, userId),
-          eq(table.businessAccountId, businessAccountId),
+          eq(table.buyerBusinessAccountId, buyerBusinessAccountId),
           eq(table.status, "new"),
           gt(table.expiresAt, now),
         ),
@@ -115,6 +115,7 @@ export class PurchaseRequestsRepository extends AbstractRepository {
       with: {
         purchaseRequest: {
           columns: {
+            buyerBusinessAccountId: true,
             requesterId: true,
             status: true,
           },
@@ -126,7 +127,7 @@ export class PurchaseRequestsRepository extends AbstractRepository {
   async deleteItemForOpenRequest(
     itemId: number,
     purchaseRequestId: number,
-    requesterId: number,
+    buyerBusinessAccountId: number,
     txContext: TXContext = this.db,
   ) {
     const [removed] = await txContext
@@ -142,7 +143,10 @@ export class PurchaseRequestsRepository extends AbstractRepository {
               .where(
                 and(
                   eq(purchaseRequests.id, purchaseRequestId),
-                  eq(purchaseRequests.requesterId, requesterId),
+                  eq(
+                    purchaseRequests.buyerBusinessAccountId,
+                    buyerBusinessAccountId,
+                  ),
                   eq(purchaseRequests.status, "new"),
                 ),
               ),
@@ -181,20 +185,74 @@ export class PurchaseRequestsRepository extends AbstractRepository {
 
   findActiveWithItemsByRequester(
     requesterId: number,
+    buyerBusinessAccountId: number,
     txContext: TXContext = this.db,
   ) {
     return txContext.query.purchaseRequests.findFirst({
       where: (table) =>
         and(
           eq(table.requesterId, requesterId),
+          eq(table.buyerBusinessAccountId, buyerBusinessAccountId),
           eq(table.status, "new"),
           gt(table.expiresAt, new Date()),
         ),
       orderBy: (table) => [desc(table.updatedAt), desc(table.id)],
       with: {
-        items: true,
+        items: {
+          with: {
+            storeInventory: {
+              with: {
+                businessAccount: true,
+              },
+            },
+          },
+        },
       },
     });
+  }
+
+  async listByBuyerBusiness(
+    buyerBusinessAccountId: number | undefined,
+    page: number,
+    limit: number,
+    txContext: TXContext = this.db,
+  ) {
+    const condition =
+      buyerBusinessAccountId == null
+        ? undefined
+        : eq(purchaseRequests.buyerBusinessAccountId, buyerBusinessAccountId);
+    const [items, countRows] = await Promise.all([
+      txContext.query.purchaseRequests.findMany({
+        where: condition,
+        with: {
+          buyerBusinessAccount: true,
+          items: {
+            with: {
+              storeInventory: {
+                with: {
+                  businessAccount: true,
+                },
+              },
+            },
+          },
+          invoices: true,
+        },
+        orderBy: (table) => [desc(table.createdAt), desc(table.id)],
+        limit,
+        offset: (page - 1) * limit,
+      }),
+      txContext
+        .select({ total: sql<number>`count(*)::int` })
+        .from(purchaseRequests)
+        .where(condition),
+    ]);
+
+    return {
+      items,
+      page,
+      limit,
+      total: countRows[0]?.total ?? 0,
+    };
   }
 
   async findById(id: number, txContext: TXContext = this.db) {
@@ -203,18 +261,73 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     });
   }
 
+  async findByIdForUpdate(id: number, txContext: TXContext) {
+    const [request] = await txContext
+      .select()
+      .from(purchaseRequests)
+      .where(eq(purchaseRequests.id, id))
+      .limit(1)
+      .for("update");
+    return request;
+  }
+
   listItemsByRequestId(
     purchaseRequestId: number,
     txContext: TXContext = this.db,
   ) {
     return txContext.query.purchaseRequestItems.findMany({
       where: (table) => eq(table.purchaseRequestId, purchaseRequestId),
+      with: {
+        storeInventory: true,
+      },
     });
   }
 
+  listInvoicesByPurchaseRequestId(
+    purchaseRequestId: number,
+    txContext: TXContext = this.db,
+  ) {
+    return txContext.query.invoices.findMany({
+      where: (table) => eq(table.purchaseRequestId, purchaseRequestId),
+      orderBy: (table) => [desc(table.id)],
+    });
+  }
+
+  async listActiveSellerRecipients(
+    businessAccountId: number,
+    txContext: TXContext = this.db,
+  ) {
+    const memberships = await txContext.query.businessMembers.findMany({
+      where: (table) =>
+        and(
+          eq(table.businessAccountId, businessAccountId),
+          eq(table.isActive, true),
+        ),
+      with: {
+        role: true,
+        user: true,
+      },
+    });
+    return memberships
+      .filter((membership) => membership.role.name === "seller")
+      .map((membership) => membership.user);
+  }
+
   async createInvoice(data: NewInvoice, txContext: TXContext = this.db) {
-    const [invoice] = await txContext.insert(invoices).values(data).returning();
-    return invoice;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const [invoice] = await txContext
+        .insert(invoices)
+        .values(data)
+        .onConflictDoNothing({ target: invoices.invoiceNumber })
+        .returning();
+      if (invoice) {
+        return invoice;
+      }
+    }
+
+    throw new Error(
+      "Failed to allocate a unique random invoice number after 20 attempts",
+    );
   }
 
   async createInvoiceItem(
@@ -222,6 +335,26 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     txContext: TXContext = this.db,
   ): Promise<void> {
     await txContext.insert(invoiceItems).values(data);
+  }
+
+  async setInvoiceStatus(
+    invoiceId: number,
+    status:
+      | "pending_credit_approval"
+      | "pending"
+      | "sent"
+      | "delivered"
+      | "paid"
+      | "rejected"
+      | "expired",
+    txContext: TXContext = this.db,
+  ) {
+    const [invoice] = await txContext
+      .update(invoices)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(invoices.id, invoiceId))
+      .returning();
+    return invoice;
   }
 
   async setRequestConfirmed(

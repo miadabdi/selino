@@ -7,6 +7,7 @@ import {
   gte,
   ilike,
   isNull,
+  lt,
   lte,
   or,
   sql,
@@ -27,8 +28,6 @@ import {
   tradeCreditApprovalRequests,
   tradeCreditSettlements,
   tradeCreditTransactions,
-  purchaseRequests,
-  invoiceItems,
   invoices,
   type NewTradeCreditAgreement,
   type NewTradeCreditAgreementSignature,
@@ -65,6 +64,23 @@ export class TradeNetworkRepository extends AbstractRepository {
           eq(table.isActive, true),
         ),
     });
+  }
+
+  async listActiveSellerRecipients(
+    businessAccountId: number,
+    txContext: TXContext = this.db,
+  ) {
+    const memberships = await txContext.query.businessMembers.findMany({
+      where: (table) =>
+        and(
+          eq(table.businessAccountId, businessAccountId),
+          eq(table.isActive, true),
+        ),
+      with: { role: true, user: true },
+    });
+    return memberships
+      .filter((membership) => membership.role.name === "seller")
+      .map((membership) => membership.user);
   }
 
   async createAgreement(
@@ -219,14 +235,14 @@ export class TradeNetworkRepository extends AbstractRepository {
     return created;
   }
 
-  async findPendingApprovalByPurchaseRequestId(
-    purchaseRequestId: number,
+  async findPendingApprovalByInvoiceId(
+    invoiceId: number,
     txContext: TXContext = this.db,
   ) {
     return txContext.query.tradeCreditApprovalRequests.findFirst({
       where: (table) =>
         and(
-          eq(table.purchaseRequestId, purchaseRequestId),
+          eq(table.invoiceId, invoiceId),
           eq(table.status, "pending"),
           isNull(table.deletedAt),
         ),
@@ -238,11 +254,12 @@ export class TradeNetworkRepository extends AbstractRepository {
       where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
       with: {
         agreement: true,
-        purchaseRequest: {
+        invoice: {
           with: {
             items: true,
           },
         },
+        purchaseRequest: true,
       },
     });
   }
@@ -260,6 +277,53 @@ export class TradeNetworkRepository extends AbstractRepository {
         ),
       orderBy: (table) => [asc(table.createdAt), asc(table.id)],
     });
+  }
+
+  findExpiredPendingApprovalIds(now: Date, txContext: TXContext = this.db) {
+    return txContext.query.tradeCreditApprovalRequests.findMany({
+      columns: { id: true },
+      where: (table) =>
+        and(
+          eq(table.status, "pending"),
+          lt(table.expiresAt, now),
+          isNull(table.deletedAt),
+        ),
+    });
+  }
+
+  async findExpiredPendingApprovalForUpdate(
+    id: number,
+    now: Date,
+    txContext: TXContext,
+  ) {
+    const [locked] = await txContext
+      .select({ id: tradeCreditApprovalRequests.id })
+      .from(tradeCreditApprovalRequests)
+      .where(
+        and(
+          eq(tradeCreditApprovalRequests.id, id),
+          eq(tradeCreditApprovalRequests.status, "pending"),
+          lt(tradeCreditApprovalRequests.expiresAt, now),
+        ),
+      )
+      .limit(1)
+      .for("update", { skipLocked: true });
+    if (!locked) return null;
+    return this.findApprovalRequestById(locked.id, txContext);
+  }
+
+  async expireApprovalRequest(id: number, txContext: TXContext) {
+    const [expired] = await txContext
+      .update(tradeCreditApprovalRequests)
+      .set({ status: "expired", updatedAt: new Date() })
+      .where(
+        and(
+          eq(tradeCreditApprovalRequests.id, id),
+          eq(tradeCreditApprovalRequests.status, "pending"),
+        ),
+      )
+      .returning();
+    return expired;
   }
 
   async approveApprovalRequest(
@@ -312,63 +376,17 @@ export class TradeNetworkRepository extends AbstractRepository {
     return updated;
   }
 
-  async createInvoiceFromPurchaseRequest(
-    purchaseRequestId: number,
-    buyerId: number,
+  async setInvoiceStatus(
+    invoiceId: number,
+    status: "pending" | "rejected" | "expired",
     txContext: TXContext = this.db,
   ) {
-    const request = await txContext.query.purchaseRequests.findFirst({
-      where: (table) => eq(table.id, purchaseRequestId),
-      with: { items: true },
-    });
-
-    if (!request) {
-      return null;
-    }
-
     const [invoice] = await txContext
-      .insert(invoices)
-      .values({
-        businessAccountId: request.businessAccountId!,
-        buyerId,
-        purchaseRequestId: request.id,
-        invoiceNumber: `INV-${Date.now()}-${request.id}`,
-        status: "pending",
-        totalAmount: request.totalAmount,
-        currency: "IRR",
-      })
+      .update(invoices)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(invoices.id, invoiceId))
       .returning();
-
-    if (request.items.length > 0) {
-      await txContext.insert(invoiceItems).values(
-        request.items.map((item) => ({
-          invoiceId: invoice.id,
-          productId: item.productId,
-          storeInventoryId: item.storeInventoryId,
-          description: null,
-          qty: item.qty,
-          unitPrice: item.price,
-          total: item.total,
-        })),
-      );
-    }
-
-    await txContext
-      .update(purchaseRequests)
-      .set({ status: "confirmed", updatedAt: new Date() })
-      .where(eq(purchaseRequests.id, request.id));
-
     return invoice;
-  }
-
-  async setPurchaseRequestCancelled(
-    purchaseRequestId: number,
-    txContext: TXContext = this.db,
-  ) {
-    await txContext
-      .update(purchaseRequests)
-      .set({ status: "cancelled", totalAmount: 0, updatedAt: new Date() })
-      .where(eq(purchaseRequests.id, purchaseRequestId));
   }
 
   async createSettlement(

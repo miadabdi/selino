@@ -24,6 +24,16 @@ export class BusinessAccountsService {
     dto: CreateBusinessAccountDto,
     logo?: Express.Multer.File,
   ) {
+    const activeMembership =
+      await this.businessAccountsRepository.findActiveMembershipByUserId(
+        userId,
+      );
+    if (activeMembership) {
+      throw new ConflictException(
+        "User already belongs to an active business account",
+      );
+    }
+
     const slug = generateUniqueSlug(dto.name);
     const logoFileId = logo
       ? (
@@ -38,6 +48,17 @@ export class BusinessAccountsService {
       : null;
 
     return this.businessAccountsRepository.transaction(async (tx) => {
+      const concurrentMembership =
+        await this.businessAccountsRepository.findActiveMembershipByUserId(
+          userId,
+          tx,
+        );
+      if (concurrentMembership) {
+        throw new ConflictException(
+          "User already belongs to an active business account",
+        );
+      }
+
       const managerRole = await this.businessAccountsRepository.ensureRole(
         DEFAULT_BUSINESS_OWNER_ROLE,
         tx,
@@ -154,6 +175,17 @@ export class BusinessAccountsService {
     if (existing) {
       throw new ConflictException(
         "User is already a business account member",
+        "userId",
+      );
+    }
+
+    const activeMembership =
+      await this.businessAccountsRepository.findActiveMembershipByUserId(
+        dto.userId,
+      );
+    if (activeMembership) {
+      throw new ConflictException(
+        "User already belongs to an active business account",
         "userId",
       );
     }

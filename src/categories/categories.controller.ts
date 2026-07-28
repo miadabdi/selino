@@ -10,7 +10,6 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard";
@@ -19,26 +18,29 @@ import { CategoriesService } from "./categories.service";
 import { CreateCategoryDto } from "./dto/create-category.dto";
 import { ReplaceSpecSchemaDto } from "./dto/replace-spec-schema.dto";
 import { UpdateCategoryDto } from "./dto/update-category.dto";
+import * as Swagger from "./categories.swagger";
 
-@ApiTags("Categories")
-@ApiBearerAuth()
+@Swagger.ControllerDocs()
 @UseGuards(JwtAuthGuard, UserEnrichmentGuard)
 @Controller("categories")
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
   @Get()
+  @Swagger.List()
   list() {
     return this.categoriesService.listHierarchy();
   }
 
   @Post()
+  @Swagger.Create()
   create(@Req() req: Request, @Body() dto: CreateCategoryDto) {
     const user = req.user as AuthenticatedUser;
     return this.categoriesService.create(user, dto);
   }
 
   @Patch(":id")
+  @Swagger.Update()
   update(
     @Req() req: Request,
     @Param("id", ParseIntPipe) id: number,
@@ -49,11 +51,13 @@ export class CategoriesController {
   }
 
   @Get(":id/spec-schema")
+  @Swagger.GetSpecSchema()
   getSpecSchema(@Param("id", ParseIntPipe) id: number) {
     return this.categoriesService.getSpecSchema(id);
   }
 
   @Put(":id/spec-schema")
+  @Swagger.ReplaceSpecSchema()
   replaceSpecSchema(
     @Req() req: Request,
     @Param("id", ParseIntPipe) id: number,

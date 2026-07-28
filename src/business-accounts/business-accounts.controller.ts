@@ -18,16 +18,14 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { imageFileFilter } from "../files/image-file-filter";
 import { BusinessAccountsService } from "./business-accounts.service";
 import { AddBusinessMemberDto } from "./dto/add-business-member.dto";
-import { CreateBusinessAccountBody } from "./dto/create-business-account-body.dto";
 import { CreateBusinessAccountDto } from "./dto/create-business-account.dto";
-import { UpdateBusinessAccountBody } from "./dto/update-business-account-body.dto";
 import { UpdateBusinessAccountDto } from "./dto/update-business-account.dto";
+import * as Swagger from "./business-accounts.swagger";
 
 @Injectable()
 export class BusinessAccountLogoUploadInterceptor implements NestInterceptor {
@@ -49,8 +47,7 @@ export class BusinessAccountLogoUploadInterceptor implements NestInterceptor {
   }
 }
 
-@ApiTags("Business Accounts")
-@ApiBearerAuth()
+@Swagger.ControllerDocs()
 @UseGuards(JwtAuthGuard)
 @Controller("business-accounts")
 export class BusinessAccountsController {
@@ -60,8 +57,7 @@ export class BusinessAccountsController {
 
   @Post()
   @UseInterceptors(BusinessAccountLogoUploadInterceptor)
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({ type: CreateBusinessAccountBody })
+  @Swagger.Create()
   create(
     @Req() req: Request,
     @Body() dto: CreateBusinessAccountDto,
@@ -72,14 +68,14 @@ export class BusinessAccountsController {
   }
 
   @Get(":id")
+  @Swagger.GetById()
   getById(@Param("id", ParseIntPipe) id: number) {
     return this.businessAccountsService.getById(id);
   }
 
   @Patch(":id")
   @UseInterceptors(BusinessAccountLogoUploadInterceptor)
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({ type: UpdateBusinessAccountBody })
+  @Swagger.Update()
   update(
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateBusinessAccountDto,
@@ -89,11 +85,13 @@ export class BusinessAccountsController {
   }
 
   @Delete(":id")
+  @Swagger.Delete()
   softDelete(@Param("id", ParseIntPipe) id: number) {
     return this.businessAccountsService.softDelete(id);
   }
 
   @Post(":id/members")
+  @Swagger.AddMember()
   addMember(
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: AddBusinessMemberDto,
@@ -102,6 +100,7 @@ export class BusinessAccountsController {
   }
 
   @Delete(":id/members/:userId")
+  @Swagger.RemoveMember()
   removeMember(
     @Param("id", ParseIntPipe) id: number,
     @Param("userId", ParseIntPipe) userId: number,

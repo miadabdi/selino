@@ -31,10 +31,16 @@ export class PermissionsGuard implements CanActivate {
       throw new UnauthorizedException("User not authenticated");
     }
 
+    if (user.isAdmin === true) {
+      return true;
+    }
+
     const userPermissionSet = new Set(user.permissions);
-    const allowed = requiredPermissions.every((permission) =>
-      userPermissionSet.has(permission),
-    );
+    const allowed =
+      userPermissionSet.has("*") ||
+      requiredPermissions.every((permission) =>
+        userPermissionSet.has(permission),
+      );
 
     if (!allowed) {
       throw new ForbiddenException(

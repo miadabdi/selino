@@ -19,19 +19,17 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { FilesInterceptor } from "@nestjs/platform-express";
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard";
 import type { AuthenticatedUser } from "../auth/interfaces/index";
 import { imageFileFilter } from "../files/image-file-filter";
 import { AddProductImageDto } from "./dto/add-product-image.dto";
-import { CreateProductBody } from "./dto/create-product-body.dto";
 import { CreateProductDto } from "./dto/create-product.dto";
 import { ReorderProductImagesDto } from "./dto/reorder-product-images.dto";
-import { UpdateProductBody } from "./dto/update-product-body.dto";
 import { UpdateProductDto } from "./dto/update-product.dto";
 import { ProductsService } from "./products.service";
+import * as Swagger from "./products.swagger";
 
 @Injectable()
 export class ProductPicturesUploadInterceptor implements NestInterceptor {
@@ -56,22 +54,21 @@ export class ProductPicturesUploadInterceptor implements NestInterceptor {
   }
 }
 
-@ApiTags("Products")
-@ApiBearerAuth()
+@Swagger.ControllerDocs()
 @UseGuards(JwtAuthGuard, UserEnrichmentGuard)
 @Controller("products")
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Get()
+  @Swagger.List()
   list(@Query() query: Record<string, unknown>) {
     return this.productsService.list(query);
   }
 
   @Post()
   @UseInterceptors(ProductPicturesUploadInterceptor)
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({ type: CreateProductBody })
+  @Swagger.Create()
   create(
     @Req() req: Request,
     @Body() dto: CreateProductDto,
@@ -82,14 +79,14 @@ export class ProductsController {
   }
 
   @Get(":id")
+  @Swagger.GetById()
   getById(@Param("id", ParseIntPipe) id: number) {
     return this.productsService.getById(id);
   }
 
   @Patch(":id")
   @UseInterceptors(ProductPicturesUploadInterceptor)
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({ type: UpdateProductBody })
+  @Swagger.Update()
   update(
     @Req() req: Request,
     @Param("id", ParseIntPipe) id: number,
@@ -101,11 +98,13 @@ export class ProductsController {
   }
 
   @Delete(":id")
+  @Swagger.Delete()
   softDelete(@Param("id", ParseIntPipe) id: number) {
     return this.productsService.softDelete(id);
   }
 
   @Post(":id/images")
+  @Swagger.AddImage()
   addImage(
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: AddProductImageDto,
@@ -114,6 +113,7 @@ export class ProductsController {
   }
 
   @Patch(":id/images/reorder")
+  @Swagger.ReorderImages()
   reorderImages(
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: ReorderProductImagesDto,

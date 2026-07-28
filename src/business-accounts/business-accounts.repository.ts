@@ -87,6 +87,12 @@ export class BusinessAccountsRepository extends AbstractRepository {
     });
   }
 
+  findActiveMembershipByUserId(userId: number, txContext: TXContext = this.db) {
+    return txContext.query.businessMembers.findFirst({
+      where: (table) => and(eq(table.userId, userId), eq(table.isActive, true)),
+    });
+  }
+
   async updateBusinessAccountById(
     id: number,
     dto: UpdateBusinessAccountDto,

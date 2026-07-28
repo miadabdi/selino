@@ -236,6 +236,18 @@ export function validateEnv(env: EnvInput): EnvOutput {
       15,
       errors,
     ),
+    CREDIT_APPROVAL_EXPIRY_MINUTES: readPositiveInt(
+      env,
+      "CREDIT_APPROVAL_EXPIRY_MINUTES",
+      60,
+      errors,
+    ),
+    CREDIT_APPROVAL_EXPIRY_CHECK_INTERVAL_MS: readPositiveInt(
+      env,
+      "CREDIT_APPROVAL_EXPIRY_CHECK_INTERVAL_MS",
+      60000,
+      errors,
+    ),
     UPLOAD_MAX_PRODUCT_PICTURE_BYTES: readPositiveInt(
       env,
       "UPLOAD_MAX_PRODUCT_PICTURE_BYTES",

@@ -22,7 +22,19 @@ describe("TradeNetworkService", () => {
   } as AuthenticatedUser;
 
   function createService(repository: Record<string, jest.Mock>) {
-    return new TradeNetworkService(repository as never);
+    const configService = {
+      getOrThrow: jest.fn((key: string) =>
+        key === "CREDIT_APPROVAL_EXPIRY_MINUTES" ? 60 : 60000,
+      ),
+    };
+    const notificationService = { send: jest.fn() };
+    return new TradeNetworkService(
+      repository as never,
+      {} as never,
+      {} as never,
+      configService as never,
+      notificationService as never,
+    );
   }
 
   it("returns null when a confirmed purchase has no active agreement", async () => {
@@ -127,7 +139,7 @@ describe("TradeNetworkService", () => {
     const service = createService(repository);
 
     await expect(
-      service.prepareCreditPurchase(user, 100, 200, 500, 300, {} as never),
+      service.prepareCreditPurchase(user, 100, 200, 500, 300, 400, {} as never),
     ).resolves.toEqual({
       status: "approved_within_limit",
       agreement,
@@ -138,6 +150,7 @@ describe("TradeNetworkService", () => {
     const agreement = {
       id: 1,
       buyerBusinessAccountId: 100,
+      supplierBusinessAccountId: 200,
       usedCredit: 900,
       creditLimit: 1000,
       currency: "IRR",
@@ -147,14 +160,14 @@ describe("TradeNetworkService", () => {
       findActiveAgreementForBuyerSupplier: jest
         .fn()
         .mockResolvedValue(agreement),
-      findPendingApprovalByPurchaseRequestId: jest.fn().mockResolvedValue(null),
+      findPendingApprovalByInvoiceId: jest.fn().mockResolvedValue(null),
       createApprovalRequest: jest.fn().mockResolvedValue(approvalRequest),
       createAuditLog: jest.fn().mockResolvedValue(undefined),
     };
     const service = createService(repository);
 
     await expect(
-      service.prepareCreditPurchase(user, 100, 200, 250, 300, {} as never),
+      service.prepareCreditPurchase(user, 100, 200, 250, 300, 400, {} as never),
     ).resolves.toEqual({
       status: "pending_approval",
       approvalRequest,
@@ -164,6 +177,8 @@ describe("TradeNetworkService", () => {
       expect.objectContaining({
         agreementId: 1,
         purchaseRequestId: 300,
+        invoiceId: 400,
+        ownerBusinessAccountId: 200,
         requestedAmount: 250,
         debtLimit: 1000,
         currentDebt: 900,

@@ -1,18 +1,11 @@
 import { ApiProperty } from "@nestjs/swagger";
+import { Type } from "class-transformer";
 import { IsInt, Min } from "class-validator";
 
-export class AddPurchaseRequestItemDto {
+export class GetActivePurchaseRequestQueryDto {
   @ApiProperty()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   buyerBusinessAccountId!: number;
-
-  @ApiProperty()
-  @IsInt()
-  storeInventoryId!: number;
-
-  @ApiProperty()
-  @IsInt()
-  @Min(1)
-  qty!: number;
 }

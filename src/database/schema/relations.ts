@@ -132,8 +132,11 @@ export const businessAccountsRelations = relations(
     }),
     members: many(businessMembers),
     inventories: many(storeInventories),
-    purchaseRequests: many(purchaseRequests),
-    invoices: many(invoices),
+    purchaseRequestsAsBuyer: many(purchaseRequests),
+    invoicesAsBuyer: many(invoices, { relationName: "invoice_buyer_business" }),
+    invoicesAsSupplier: many(invoices, {
+      relationName: "invoice_supplier_business",
+    }),
     subscriptions: many(businessSubscriptions),
     tradeCreditAgreementsAsBuyer: many(tradeCreditAgreements, {
       relationName: "trade_credit_agreement_buyer",
@@ -207,8 +210,8 @@ export const purchaseRequestsRelations = relations(
       fields: [purchaseRequests.requesterId],
       references: [users.id],
     }),
-    businessAccount: one(businessAccounts, {
-      fields: [purchaseRequests.businessAccountId],
+    buyerBusinessAccount: one(businessAccounts, {
+      fields: [purchaseRequests.buyerBusinessAccountId],
       references: [businessAccounts.id],
     }),
     items: many(purchaseRequestItems),
@@ -236,9 +239,15 @@ export const purchaseRequestItemsRelations = relations(
 );
 
 export const invoicesRelations = relations(invoices, ({ one, many }) => ({
-  businessAccount: one(businessAccounts, {
-    fields: [invoices.businessAccountId],
+  supplierBusinessAccount: one(businessAccounts, {
+    fields: [invoices.supplierBusinessAccountId],
     references: [businessAccounts.id],
+    relationName: "invoice_supplier_business",
+  }),
+  buyerBusinessAccount: one(businessAccounts, {
+    fields: [invoices.buyerBusinessAccountId],
+    references: [businessAccounts.id],
+    relationName: "invoice_buyer_business",
   }),
   buyer: one(users, {
     fields: [invoices.buyerId],

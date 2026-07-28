@@ -34,12 +34,11 @@ export const purchaseRequests = pgTable("purchase_requests", {
   requesterId: integer("requester_id")
     .notNull()
     .references((): AnyPgColumn => users.id),
-  businessAccountId: integer("business_account_id").references(
-    (): AnyPgColumn => businessAccounts.id,
-    {
-      onDelete: "set null",
-    },
-  ),
+  buyerBusinessAccountId: integer("buyer_business_account_id")
+    .notNull()
+    .references((): AnyPgColumn => businessAccounts.id, {
+      onDelete: "restrict",
+    }),
 
   code: varchar("code", { length: 100 }),
   status: purchaseRequestStatusEnum("status").notNull().default("new"),

@@ -9,6 +9,7 @@ import { validateEnv } from "./config/env.validation";
 import { DatabaseModule } from "./database/database.module";
 import { FilesModule } from "./files/files.module";
 import { InventoriesModule } from "./inventories/inventories.module";
+import { InvoicesModule } from "./invoices/invoices.module";
 import { ProductsModule } from "./products/products.module";
 import { PurchaseRequestsModule } from "./purchase-requests/purchase-requests.module";
 import { RabbitmqModule } from "./rabbitmq/rabbitmq.module";
@@ -35,6 +36,7 @@ import { UsersModule } from "./users/users.module";
     BrandsModule,
     ProductsModule,
     InventoriesModule,
+    InvoicesModule,
     PurchaseRequestsModule,
     TradeNetworkModule,
   ],

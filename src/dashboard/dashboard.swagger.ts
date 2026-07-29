@@ -18,7 +18,7 @@ export const Overview = () =>
     ApiOperation({
       summary: "Get operational dashboard aggregates",
       description:
-        "Returns seller purchase-request, invoice, and wallet counters together with manager sales, order, credit, trend, and recent-order KPIs for one business.",
+        "Returns seller purchase-request, invoice, and wallet counters together with manager sales, order, credit, trend, and recent-order KPIs for one business. Seller invoice counters include exact paid, pending, sent, active, and historical totals for the requested date range plus separate current-day counts.",
     }),
     NumericIdParam("businessAccountId", "Dashboard business account"),
     ApiOkResponse({ description: "The aggregated dashboard read model." }),

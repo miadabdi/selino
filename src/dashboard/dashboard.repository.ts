@@ -20,6 +20,13 @@ type SummaryRow = {
   cancelledPurchaseRequests: number;
   activePurchaseInvoices: number;
   historicalPurchaseInvoices: number;
+  paidPurchaseInvoices: number;
+  pendingPurchaseInvoices: number;
+  sentPurchaseInvoices: number;
+  todayPaidPurchaseInvoices: number;
+  todayActivePurchaseInvoices: number;
+  todayPendingPurchaseInvoices: number;
+  todaySentPurchaseInvoices: number;
   outstandingPurchaseAmount: number;
 };
 
@@ -44,6 +51,9 @@ export class DashboardRepository extends AbstractRepository {
     range: DashboardRange,
     txContext: TXContext = this.db,
   ): Promise<Omit<DashboardOverview, "range">> {
+    const rangeFrom = range.from.toISOString();
+    const rangeTo = range.to.toISOString();
+
     const [summaryRows, salesTrend, recentOrders, topSuppliers, topProducts] =
       await Promise.all([
         txContext.execute<SummaryRow>(sql`
@@ -58,8 +68,8 @@ export class DashboardRepository extends AbstractRepository {
                 and i.status in ('sent', 'delivered', 'paid')
             ), 0)::float8 as purchase_amount
           from invoices i
-          where i.created_at >= ${range.from}
-            and i.created_at < ${range.to}
+          where i.created_at >= ${rangeFrom}
+            and i.created_at < ${rangeTo}
             and (
               i.supplier_business_account_id = ${businessAccountId}
               or i.buyer_business_account_id = ${businessAccountId}
@@ -75,8 +85,8 @@ export class DashboardRepository extends AbstractRepository {
             )::int as completed_orders
           from orders o
           inner join invoices i on i.id = o.invoice_id
-          where o.created_at >= ${range.from}
-            and o.created_at < ${range.to}
+          where o.created_at >= ${rangeFrom}
+            and o.created_at < ${rangeTo}
             and o.deleted_at is null
             and (
               i.supplier_business_account_id = ${businessAccountId}
@@ -96,8 +106,8 @@ export class DashboardRepository extends AbstractRepository {
               as cancelled_purchase_requests
           from purchase_requests request
           where request.buyer_business_account_id = ${businessAccountId}
-            and request.created_at >= ${range.from}
-            and request.created_at < ${range.to}
+            and request.created_at >= ${rangeFrom}
+            and request.created_at < ${rangeTo}
         ),
         purchase_invoice_totals as (
           select
@@ -107,13 +117,42 @@ export class DashboardRepository extends AbstractRepository {
             count(*) filter (
               where i.status in ('delivered', 'paid', 'rejected', 'expired', 'cancelled')
             )::int as historical_purchase_invoices,
+            count(*) filter (
+              where i.status = 'paid'
+            )::int as paid_purchase_invoices,
+            count(*) filter (
+              where i.status = 'pending'
+            )::int as pending_purchase_invoices,
+            count(*) filter (
+              where i.status = 'sent'
+            )::int as sent_purchase_invoices,
+            count(*) filter (
+              where i.status = 'paid'
+                and i.created_at >= date_trunc('day', now())
+                and i.created_at < date_trunc('day', now()) + interval '1 day'
+            )::int as today_paid_purchase_invoices,
+            count(*) filter (
+              where i.status in ('pending_credit_approval', 'pending', 'sent')
+                and i.created_at >= date_trunc('day', now())
+                and i.created_at < date_trunc('day', now()) + interval '1 day'
+            )::int as today_active_purchase_invoices,
+            count(*) filter (
+              where i.status = 'pending'
+                and i.created_at >= date_trunc('day', now())
+                and i.created_at < date_trunc('day', now()) + interval '1 day'
+            )::int as today_pending_purchase_invoices,
+            count(*) filter (
+              where i.status = 'sent'
+                and i.created_at >= date_trunc('day', now())
+                and i.created_at < date_trunc('day', now()) + interval '1 day'
+            )::int as today_sent_purchase_invoices,
             coalesce(sum(i.total_amount) filter (
               where i.status in ('pending_credit_approval', 'pending', 'sent', 'delivered')
             ), 0)::float8 as outstanding_purchase_amount
           from invoices i
           where i.buyer_business_account_id = ${businessAccountId}
-            and i.created_at >= ${range.from}
-            and i.created_at < ${range.to}
+            and i.created_at >= ${rangeFrom}
+            and i.created_at < ${rangeTo}
         ),
         wallet_totals as (
           select
@@ -155,6 +194,20 @@ export class DashboardRepository extends AbstractRepository {
             as "activePurchaseInvoices",
           purchase_invoice_totals.historical_purchase_invoices
             as "historicalPurchaseInvoices",
+          purchase_invoice_totals.paid_purchase_invoices
+            as "paidPurchaseInvoices",
+          purchase_invoice_totals.pending_purchase_invoices
+            as "pendingPurchaseInvoices",
+          purchase_invoice_totals.sent_purchase_invoices
+            as "sentPurchaseInvoices",
+          purchase_invoice_totals.today_paid_purchase_invoices
+            as "todayPaidPurchaseInvoices",
+          purchase_invoice_totals.today_active_purchase_invoices
+            as "todayActivePurchaseInvoices",
+          purchase_invoice_totals.today_pending_purchase_invoices
+            as "todayPendingPurchaseInvoices",
+          purchase_invoice_totals.today_sent_purchase_invoices
+            as "todaySentPurchaseInvoices",
           purchase_invoice_totals.outstanding_purchase_amount
             as "outstandingPurchaseAmount",
           coalesce(wallet_totals.currency, 'IRR') as currency
@@ -174,8 +227,8 @@ export class DashboardRepository extends AbstractRepository {
         from invoices i
         where i.supplier_business_account_id = ${businessAccountId}
           and i.status in ('sent', 'delivered', 'paid')
-          and i.created_at >= ${range.from}
-          and i.created_at < ${range.to}
+          and i.created_at >= ${rangeFrom}
+          and i.created_at < ${rangeTo}
         group by date_trunc('day', i.created_at)
         order by date_trunc('day', i.created_at)
       `),
@@ -204,8 +257,8 @@ export class DashboardRepository extends AbstractRepository {
             i.supplier_business_account_id = ${businessAccountId}
             or i.buyer_business_account_id = ${businessAccountId}
           )
-          and o.created_at >= ${range.from}
-          and o.created_at < ${range.to}
+          and o.created_at >= ${rangeFrom}
+          and o.created_at < ${rangeTo}
           and o.deleted_at is null
         order by o.created_at desc, o.id desc
         limit 10
@@ -232,8 +285,8 @@ export class DashboardRepository extends AbstractRepository {
           on supplier.id = i.supplier_business_account_id
         left join orders o on o.invoice_id = i.id and o.deleted_at is null
         where i.buyer_business_account_id = ${businessAccountId}
-          and i.created_at >= ${range.from}
-          and i.created_at < ${range.to}
+          and i.created_at >= ${rangeFrom}
+          and i.created_at < ${rangeTo}
           and i.status not in ('rejected', 'expired', 'cancelled')
         group by supplier.id, supplier.name
         order by "totalPurchased" desc, supplier.id
@@ -252,8 +305,8 @@ export class DashboardRepository extends AbstractRepository {
         inner join business_accounts supplier
           on supplier.id = invoice.supplier_business_account_id
         where invoice.buyer_business_account_id = ${businessAccountId}
-          and invoice.created_at >= ${range.from}
-          and invoice.created_at < ${range.to}
+          and invoice.created_at >= ${rangeFrom}
+          and invoice.created_at < ${rangeTo}
           and invoice.status not in ('rejected', 'expired', 'cancelled')
         group by product.id, product.title, supplier.name
         order by "totalAmount" desc, product.id
@@ -276,6 +329,13 @@ export class DashboardRepository extends AbstractRepository {
       cancelledPurchaseRequests: 0,
       activePurchaseInvoices: 0,
       historicalPurchaseInvoices: 0,
+      paidPurchaseInvoices: 0,
+      pendingPurchaseInvoices: 0,
+      sentPurchaseInvoices: 0,
+      todayPaidPurchaseInvoices: 0,
+      todayActivePurchaseInvoices: 0,
+      todayPendingPurchaseInvoices: 0,
+      todaySentPurchaseInvoices: 0,
       outstandingPurchaseAmount: 0,
     };
 
@@ -304,6 +364,13 @@ export class DashboardRepository extends AbstractRepository {
         cancelledPurchaseRequests: summary.cancelledPurchaseRequests,
         activePurchaseInvoices: summary.activePurchaseInvoices,
         historicalPurchaseInvoices: summary.historicalPurchaseInvoices,
+        paidPurchaseInvoices: summary.paidPurchaseInvoices,
+        pendingPurchaseInvoices: summary.pendingPurchaseInvoices,
+        sentPurchaseInvoices: summary.sentPurchaseInvoices,
+        todayPaidPurchaseInvoices: summary.todayPaidPurchaseInvoices,
+        todayActivePurchaseInvoices: summary.todayActivePurchaseInvoices,
+        todayPendingPurchaseInvoices: summary.todayPendingPurchaseInvoices,
+        todaySentPurchaseInvoices: summary.todaySentPurchaseInvoices,
         outstandingPurchaseAmount: summary.outstandingPurchaseAmount,
         walletBalance: summary.walletBalance,
         currency: summary.currency ?? "IRR",

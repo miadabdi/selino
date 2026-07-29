@@ -26,6 +26,13 @@ export type DashboardOverview = {
     cancelledPurchaseRequests: number;
     activePurchaseInvoices: number;
     historicalPurchaseInvoices: number;
+    paidPurchaseInvoices: number;
+    pendingPurchaseInvoices: number;
+    sentPurchaseInvoices: number;
+    todayPaidPurchaseInvoices: number;
+    todayActivePurchaseInvoices: number;
+    todayPendingPurchaseInvoices: number;
+    todaySentPurchaseInvoices: number;
     outstandingPurchaseAmount: number;
     walletBalance: number;
     currency: string;

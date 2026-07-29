@@ -8,4 +8,11 @@ export class UpdateBusinessAccountBody extends UpdateBusinessAccountDto {
     format: "binary",
   })
   logo?: unknown;
+
+  @ApiPropertyOptional({
+    description: "Business-license image",
+    type: "string",
+    format: "binary",
+  })
+  license?: unknown;
 }

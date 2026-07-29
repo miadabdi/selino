@@ -15,9 +15,14 @@ export class ListInvoicesQueryDto {
   @IsIn(["purchase", "sale"])
   direction: "purchase" | "sale" = "purchase";
 
-  @ApiPropertyOptional({ enum: ["active", "history"], default: "active" })
-  @IsIn(["active", "history"])
-  view: "active" | "history" = "active";
+  @ApiPropertyOptional({
+    enum: ["active", "history", "recent"],
+    default: "active",
+    description:
+      "Use recent for the home preview across all visible invoice statuses.",
+  })
+  @IsIn(["active", "history", "recent"])
+  view: "active" | "history" | "recent" = "active";
 
   @ApiPropertyOptional()
   @Type(() => Number)

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { AbstractRepository } from "../common/abstract.repository";
 import { DATABASE } from "../database/database.constants";
 import type { Database, TXContext } from "../database/database.types";
@@ -88,6 +88,25 @@ export class ShipmentsRepository extends AbstractRepository {
     const [items, countRows] = await Promise.all([
       txContext.query.shipments.findMany({
         where,
+        with: {
+          originAddress: true,
+          destinationAddress: true,
+          order: {
+            with: {
+              buyerBusinessAccount: {
+                columns: { id: true, name: true, logoFileId: true },
+              },
+              supplierBusinessAccount: {
+                columns: { id: true, name: true, logoFileId: true },
+              },
+              invoice: {
+                columns: { id: true, invoiceNumber: true },
+                with: { items: true },
+              },
+              shippingAddress: true,
+            },
+          },
+        },
         orderBy: (table) => [desc(table.createdAt), desc(table.id)],
         limit: query.limit,
         offset,
@@ -114,6 +133,7 @@ export class ShipmentsRepository extends AbstractRepository {
       where: (table) =>
         and(
           eq(table.id, shipmentId),
+          isNull(table.deletedAt),
           sql`exists (
             select 1 from ${orders}
             where ${orders.id} = ${table.orderId}
@@ -123,6 +143,25 @@ export class ShipmentsRepository extends AbstractRepository {
               )
           )`,
         ),
+      with: {
+        originAddress: true,
+        destinationAddress: true,
+        order: {
+          with: {
+            buyerBusinessAccount: {
+              columns: { id: true, name: true, logoFileId: true },
+            },
+            supplierBusinessAccount: {
+              columns: { id: true, name: true, logoFileId: true },
+            },
+            invoice: {
+              columns: { id: true, invoiceNumber: true },
+              with: { items: true },
+            },
+            shippingAddress: true,
+          },
+        },
+      },
     });
     if (!shipment) return undefined;
     const locations = await txContext.query.shipmentLocationEvents.findMany({

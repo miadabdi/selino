@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   integer,
   pgTable,
   serial,
@@ -23,6 +24,8 @@ export const users = pgTable("users", {
 
   firstName: varchar("first_name", { length: 100 }),
   lastName: varchar("last_name", { length: 100 }),
+  nationalCode: varchar("national_code", { length: 20 }).unique(),
+  birthDate: date("birth_date"),
 
   // FK to files.id — reference not declared here to avoid circular import
   // with files.schema.ts. The FK constraint is defined in the migration.

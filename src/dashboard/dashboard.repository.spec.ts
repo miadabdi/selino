@@ -61,6 +61,18 @@ describe("DashboardRepository", () => {
           todayPendingPurchaseInvoices: 403,
           todaySentPurchaseInvoices: 404,
           outstandingPurchaseAmount: 306,
+          todaySalesAmount: 1000,
+          yesterdaySalesAmount: 800,
+          periodOrderCount: 50,
+          previousOrderCount: 40,
+          periodRevenue: 9000,
+          previousRevenue: 6000,
+          previousSalesAmount: 80,
+          previousCompletedOrders: 20,
+          currentMonthOrderCount: 37,
+          previousMonthOrderCount: 40,
+          currentMonthRevenue: 9400,
+          previousMonthRevenue: 8000,
         },
       ])
       .mockResolvedValueOnce([])
@@ -90,12 +102,41 @@ describe("DashboardRepository", () => {
         todaySentPurchaseInvoices: 404,
       }),
     );
+    expect(overview.managerKpis).toEqual({
+      todaySalesAmount: 1000,
+      todaySalesComparisonPercent: 25,
+      currentMonthOrderCount: 37,
+      currentMonthOrderComparisonPercent: -7.5,
+      currentMonthRevenue: 9400,
+      currentMonthRevenueComparisonPercent: 17.5,
+      periodOrderCount: 50,
+      orderCountComparisonPercent: 25,
+      periodRevenue: 9000,
+      revenueComparisonPercent: 50,
+      currency: "IRR",
+    });
+    expect(overview.managerPerformance).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "sales",
+          value: 101,
+          previousValue: 80,
+          changePercent: 26.25,
+        }),
+        expect.objectContaining({
+          key: "fulfillmentRate",
+          value: 208,
+          previousValue: 50,
+        }),
+      ]),
+    );
 
     const sqlValues = execute.mock.calls.flatMap(([query]) =>
       collectSqlValues(query),
     );
     expect(sqlValues).toContain("2026-07-01T00:00:00.000Z");
     expect(sqlValues).toContain("2026-08-01T00:00:00.000Z");
+    expect(sqlValues).toContain("2026-05-31T00:00:00.000Z");
     expect(sqlValues.some((value) => value instanceof Date)).toBe(false);
 
     const summarySql = collectSqlText(execute.mock.calls[0][0]);
@@ -127,6 +168,20 @@ describe("DashboardRepository", () => {
         todayActivePurchaseInvoices: 0,
         todayPendingPurchaseInvoices: 0,
         todaySentPurchaseInvoices: 0,
+      }),
+    );
+    expect(overview.managerKpis).toEqual(
+      expect.objectContaining({
+        todaySalesAmount: 0,
+        todaySalesComparisonPercent: 0,
+        currentMonthOrderCount: 0,
+        currentMonthOrderComparisonPercent: 0,
+        currentMonthRevenue: 0,
+        currentMonthRevenueComparisonPercent: 0,
+        periodOrderCount: 0,
+        orderCountComparisonPercent: 0,
+        periodRevenue: 0,
+        revenueComparisonPercent: 0,
       }),
     );
   });

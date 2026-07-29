@@ -68,7 +68,7 @@ export const ListAgreements = () =>
     ApiOperation({
       summary: "List trade credit agreements",
       description:
-        "Returns paginated buyer or supplier agreements for the selected business, including available credit.",
+        "Returns paginated buyer or supplier agreements plus a server-side credit-limit, used-credit, available-credit, utilization, and active-agreement summary calculated independently of pagination.",
     }),
     ApiOkResponse({ description: "Paginated credit agreements." }),
     AuthenticationErrors(),
@@ -125,7 +125,7 @@ export const ListCreditTransactions = () =>
     ApiOperation({
       summary: "List credit ledger transactions",
       description:
-        "Returns a paginated, newest-first ledger for the selected credit agreement.",
+        "Returns a paginated, newest-first ledger with transaction codes, real agreement-party names, referenced product and business status, server-side filters, and totals calculated independently of pagination.",
     }),
     agreementId(),
     ApiOkResponse({ description: "Paginated credit transactions." }),

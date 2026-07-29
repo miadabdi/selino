@@ -39,6 +39,15 @@ export class ListPurchaseRequestsQueryDto {
     | "cancelled"
     | "expired";
 
+  @ApiPropertyOptional({
+    description:
+      "Dashboard status grouping. under_review maps to pending credit approval; completed maps to confirmed, cancelled, and expired.",
+    enum: ["new", "under_review", "completed"],
+  })
+  @IsIn(["new", "under_review", "completed"])
+  @IsOptional()
+  statusGroup?: "new" | "under_review" | "completed";
+
   @ApiPropertyOptional({ description: "Search by request code or notes." })
   @IsString()
   @IsOptional()

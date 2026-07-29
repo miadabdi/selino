@@ -30,11 +30,38 @@ export class InvoicesService {
   private resolveReadScope(
     user: AuthenticatedUser,
     businessAccountId: number,
-    view: "active" | "history",
+    view: "active" | "history" | "recent",
   ) {
     const membership = this.getMembership(user, businessAccountId);
     if (membership == null || membership.permissions.includes("*")) {
       return { requesterId: undefined };
+    }
+
+    if (view === "recent") {
+      const hasActiveAll = membership.permissions.includes(
+        "seller.invoices.active.read.all",
+      );
+      const hasHistoryAll = membership.permissions.includes(
+        "seller.invoices.history.read.all",
+      );
+      if (hasActiveAll && hasHistoryAll) {
+        return { requesterId: undefined };
+      }
+
+      const hasActiveOwn =
+        hasActiveAll ||
+        membership.permissions.includes("seller.invoices.active.read.own");
+      const hasHistoryOwn =
+        hasHistoryAll ||
+        membership.permissions.includes("seller.invoices.history.read.own");
+      if (hasActiveOwn && hasHistoryOwn) {
+        return { requesterId: user.id };
+      }
+
+      throwHttpError(
+        HttpStatus.FORBIDDEN,
+        "Active and history invoice read permissions are required",
+      );
     }
 
     const prefix = `seller.invoices.${view}.read`;
@@ -95,7 +122,7 @@ export class InvoicesService {
         : "sale";
     const isActive =
       direction === "purchase"
-        ? ["pending_credit_approval", "pending", "sent"].includes(
+        ? ["pending_credit_approval", "pending", "sent", "delivered"].includes(
             invoice.status,
           )
         : ["pending", "sent"].includes(invoice.status);

@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  IsDateString,
   IsEmail,
   IsIn,
   IsOptional,
@@ -71,4 +72,20 @@ export class UpdateBusinessAccountDto {
   @IsUrl({ require_protocol: true })
   @MaxLength(500)
   website?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  licenseNumber?: string | null;
+
+  @ApiPropertyOptional({ example: "2024-01-01" })
+  @IsOptional()
+  @IsDateString()
+  licenseIssuedAt?: string | null;
+
+  @ApiPropertyOptional({ example: "2028-01-01" })
+  @IsOptional()
+  @IsDateString()
+  licenseExpiresAt?: string | null;
 }

@@ -28,12 +28,27 @@ type SummaryRow = {
   todayPendingPurchaseInvoices: number;
   todaySentPurchaseInvoices: number;
   outstandingPurchaseAmount: number;
+  todaySalesAmount: number;
+  yesterdaySalesAmount: number;
+  periodOrderCount: number;
+  previousOrderCount: number;
+  periodRevenue: number;
+  previousRevenue: number;
+  previousSalesAmount: number;
+  previousCompletedOrders: number;
+  currentMonthOrderCount: number;
+  previousMonthOrderCount: number;
+  currentMonthRevenue: number;
+  previousMonthRevenue: number;
 };
 
 type TrendRow = {
   date: string;
   amount: number;
   orderCount: number;
+  purchaseAmount: number;
+  deliveredOrderCount: number;
+  averageOrderValue: number;
 };
 
 type RecentOrderRow = DashboardOverview["recentOrders"][number];
@@ -53,6 +68,11 @@ export class DashboardRepository extends AbstractRepository {
   ): Promise<Omit<DashboardOverview, "range">> {
     const rangeFrom = range.from.toISOString();
     const rangeTo = range.to.toISOString();
+    const durationMs = range.to.getTime() - range.from.getTime();
+    const previousFrom = new Date(
+      range.from.getTime() - durationMs,
+    ).toISOString();
+    const previousTo = rangeFrom;
 
     const [summaryRows, salesTrend, recentOrders, topSuppliers, topProducts] =
       await Promise.all([
@@ -66,7 +86,11 @@ export class DashboardRepository extends AbstractRepository {
             coalesce(sum(i.total_amount) filter (
               where i.buyer_business_account_id = ${businessAccountId}
                 and i.status in ('sent', 'delivered', 'paid')
-            ), 0)::float8 as purchase_amount
+            ), 0)::float8 as purchase_amount,
+            coalesce(sum(i.total_amount) filter (
+              where i.supplier_business_account_id = ${businessAccountId}
+                and i.status = 'paid'
+            ), 0)::float8 as period_revenue
           from invoices i
           where i.created_at >= ${rangeFrom}
             and i.created_at < ${rangeTo}
@@ -75,8 +99,37 @@ export class DashboardRepository extends AbstractRepository {
               or i.buyer_business_account_id = ${businessAccountId}
             )
         ),
+        previous_invoice_totals as (
+          select
+            coalesce(sum(i.total_amount) filter (
+              where i.supplier_business_account_id = ${businessAccountId}
+                and i.status in ('sent', 'delivered', 'paid')
+            ), 0)::float8 as previous_sales_amount,
+            coalesce(sum(i.total_amount) filter (
+              where i.supplier_business_account_id = ${businessAccountId}
+                and i.status = 'paid'
+            ), 0)::float8 as previous_revenue
+          from invoices i
+          where i.created_at >= ${previousFrom}
+            and i.created_at < ${previousTo}
+        ),
+        daily_sales as (
+          select
+            coalesce(sum(i.total_amount) filter (
+              where i.created_at >= date_trunc('day', now())
+                and i.created_at < date_trunc('day', now()) + interval '1 day'
+            ), 0)::float8 as today_sales_amount,
+            coalesce(sum(i.total_amount) filter (
+              where i.created_at >= date_trunc('day', now()) - interval '1 day'
+                and i.created_at < date_trunc('day', now())
+            ), 0)::float8 as yesterday_sales_amount
+          from invoices i
+          where i.supplier_business_account_id = ${businessAccountId}
+            and i.status in ('sent', 'delivered', 'paid')
+        ),
         order_totals as (
           select
+            count(*)::int as period_order_count,
             count(*) filter (
               where o.status not in ('delivered', 'cancelled')
             )::int as active_orders,
@@ -92,6 +145,46 @@ export class DashboardRepository extends AbstractRepository {
               i.supplier_business_account_id = ${businessAccountId}
               or i.buyer_business_account_id = ${businessAccountId}
             )
+        ),
+        previous_order_totals as (
+          select
+            count(*)::int as previous_order_count,
+            count(*) filter (where o.status = 'delivered')::int
+              as previous_completed_orders
+          from orders o
+          where o.created_at >= ${previousFrom}
+            and o.created_at < ${previousTo}
+            and o.deleted_at is null
+            and (
+              o.supplier_business_account_id = ${businessAccountId}
+              or o.buyer_business_account_id = ${businessAccountId}
+            )
+        ),
+        manager_month_totals as (
+          select
+            count(distinct o.id) filter (
+              where o.created_at >= date_trunc('month', now())
+                and o.created_at < date_trunc('month', now()) + interval '1 month'
+            )::int as current_month_order_count,
+            count(distinct o.id) filter (
+              where o.created_at >= date_trunc('month', now()) - interval '1 month'
+                and o.created_at < date_trunc('month', now())
+            )::int as previous_month_order_count,
+            coalesce(sum(i.total_amount) filter (
+              where i.status = 'paid'
+                and i.created_at >= date_trunc('month', now())
+                and i.created_at < date_trunc('month', now()) + interval '1 month'
+            ), 0)::float8 as current_month_revenue,
+            coalesce(sum(i.total_amount) filter (
+              where i.status = 'paid'
+                and i.created_at >= date_trunc('month', now()) - interval '1 month'
+                and i.created_at < date_trunc('month', now())
+            ), 0)::float8 as previous_month_revenue
+          from invoices i
+          left join orders o on o.invoice_id = i.id and o.deleted_at is null
+          where i.supplier_business_account_id = ${businessAccountId}
+            and i.created_at >= date_trunc('month', now()) - interval '1 month'
+            and i.created_at < date_trunc('month', now()) + interval '1 month'
         ),
         purchase_request_totals as (
           select
@@ -177,6 +270,23 @@ export class DashboardRepository extends AbstractRepository {
         select
           invoice_totals.sales_amount as "salesAmount",
           invoice_totals.purchase_amount as "purchaseAmount",
+          invoice_totals.period_revenue as "periodRevenue",
+          previous_invoice_totals.previous_sales_amount as "previousSalesAmount",
+          previous_invoice_totals.previous_revenue as "previousRevenue",
+          daily_sales.today_sales_amount as "todaySalesAmount",
+          daily_sales.yesterday_sales_amount as "yesterdaySalesAmount",
+          order_totals.period_order_count as "periodOrderCount",
+          previous_order_totals.previous_order_count as "previousOrderCount",
+          previous_order_totals.previous_completed_orders
+            as "previousCompletedOrders",
+          manager_month_totals.current_month_order_count
+            as "currentMonthOrderCount",
+          manager_month_totals.previous_month_order_count
+            as "previousMonthOrderCount",
+          manager_month_totals.current_month_revenue
+            as "currentMonthRevenue",
+          manager_month_totals.previous_month_revenue
+            as "previousMonthRevenue",
           order_totals.active_orders as "activeOrders",
           order_totals.completed_orders as "completedOrders",
           wallet_totals.wallet_balance as "walletBalance",
@@ -213,7 +323,11 @@ export class DashboardRepository extends AbstractRepository {
           coalesce(wallet_totals.currency, 'IRR') as currency
         from
           invoice_totals,
+          previous_invoice_totals,
+          daily_sales,
           order_totals,
+          previous_order_totals,
+          manager_month_totals,
           purchase_request_totals,
           purchase_invoice_totals,
           wallet_totals,
@@ -223,8 +337,20 @@ export class DashboardRepository extends AbstractRepository {
         select
           to_char(date_trunc('day', i.created_at), 'YYYY-MM-DD') as date,
           coalesce(sum(i.total_amount), 0)::float8 as amount,
-          count(*)::int as "orderCount"
+          coalesce(sum(i.total_amount) filter (
+            where i.buyer_business_account_id = ${businessAccountId}
+          ), 0)::float8 as "purchaseAmount",
+          count(distinct o.id)::int as "orderCount",
+          count(distinct o.id) filter (
+            where o.status = 'delivered'
+          )::int as "deliveredOrderCount",
+          case
+            when count(distinct o.id) = 0 then 0
+            else coalesce(sum(i.total_amount), 0)::float8
+              / count(distinct o.id)
+          end as "averageOrderValue"
         from invoices i
+        left join orders o on o.invoice_id = i.id and o.deleted_at is null
         where i.supplier_business_account_id = ${businessAccountId}
           and i.status in ('sent', 'delivered', 'paid')
           and i.created_at >= ${rangeFrom}
@@ -243,16 +369,36 @@ export class DashboardRepository extends AbstractRepository {
               then buyer.name
             else supplier.name
           end as "counterpartyName",
+          buyer.name as "buyerName",
+          supplier.name as "supplierName",
           o.status,
+          coalesce((
+            select count(*)::int from invoice_items item
+            where item.invoice_id = i.id
+          ), 0) as "itemCount",
+          coalesce((
+            select sum(item.qty)::int from invoice_items item
+            where item.invoice_id = i.id
+          ), 0) as quantity,
           i.total_amount::float8 as "totalAmount",
           i.currency,
-          o.created_at as "createdAt"
+          o.created_at as "createdAt",
+          shipment.id as "shipmentId",
+          shipment.status as "shipmentStatus",
+          shipment.estimated_delivery_at as "estimatedDeliveryAt"
         from orders o
         inner join invoices i on i.id = o.invoice_id
         inner join business_accounts buyer
           on buyer.id = i.buyer_business_account_id
         inner join business_accounts supplier
           on supplier.id = i.supplier_business_account_id
+        left join lateral (
+          select s.id, s.status, s.estimated_delivery_at
+          from shipments s
+          where s.order_id = o.id and s.deleted_at is null
+          order by s.created_at desc, s.id desc
+          limit 1
+        ) shipment on true
         where (
             i.supplier_business_account_id = ${businessAccountId}
             or i.buyer_business_account_id = ${businessAccountId}
@@ -296,7 +442,13 @@ export class DashboardRepository extends AbstractRepository {
         select
           product.id,
           product.title as name,
-          supplier.name as "supplierName",
+          concat('PRD-', product.id) as "productCode",
+          product.model,
+          product.default_image_file_id as "defaultImageFileId",
+          (min(product.attributes::text))::json as attributes,
+          min(supplier.name) as "supplierName",
+          array_agg(distinct supplier.name order by supplier.name)
+            as "supplierNames",
           coalesce(sum(item.qty), 0)::int as quantity,
           coalesce(sum(item.total), 0)::float8 as "totalAmount"
         from invoice_items item
@@ -308,7 +460,8 @@ export class DashboardRepository extends AbstractRepository {
           and invoice.created_at >= ${rangeFrom}
           and invoice.created_at < ${rangeTo}
           and invoice.status not in ('rejected', 'expired', 'cancelled')
-        group by product.id, product.title, supplier.name
+        group by product.id, product.title, product.model,
+          product.default_image_file_id
         order by "totalAmount" desc, product.id
         limit 8
       `),
@@ -337,6 +490,18 @@ export class DashboardRepository extends AbstractRepository {
       todayPendingPurchaseInvoices: 0,
       todaySentPurchaseInvoices: 0,
       outstandingPurchaseAmount: 0,
+      todaySalesAmount: 0,
+      yesterdaySalesAmount: 0,
+      periodOrderCount: 0,
+      previousOrderCount: 0,
+      periodRevenue: 0,
+      previousRevenue: 0,
+      previousSalesAmount: 0,
+      previousCompletedOrders: 0,
+      currentMonthOrderCount: 0,
+      previousMonthOrderCount: 0,
+      currentMonthRevenue: 0,
+      previousMonthRevenue: 0,
     };
 
     const managerSummary = {
@@ -353,10 +518,60 @@ export class DashboardRepository extends AbstractRepository {
       ),
       currency: summary.currency ?? "IRR",
     };
+    const percentChange = (current: number, previous: number) =>
+      previous === 0
+        ? current === 0
+          ? 0
+          : null
+        : ((current - previous) / Math.abs(previous)) * 100;
+    const fulfillmentRate =
+      summary.periodOrderCount > 0
+        ? (summary.completedOrders / summary.periodOrderCount) * 100
+        : 0;
+    const previousFulfillmentRate =
+      summary.previousOrderCount > 0
+        ? (summary.previousCompletedOrders / summary.previousOrderCount) * 100
+        : 0;
+    const averageOrderValue =
+      summary.periodOrderCount > 0
+        ? summary.salesAmount / summary.periodOrderCount
+        : 0;
+    const previousAverageOrderValue =
+      summary.previousOrderCount > 0
+        ? summary.previousSalesAmount / summary.previousOrderCount
+        : 0;
 
     return {
       summary: managerSummary,
       managerSummary,
+      managerKpis: {
+        todaySalesAmount: summary.todaySalesAmount,
+        todaySalesComparisonPercent: percentChange(
+          summary.todaySalesAmount,
+          summary.yesterdaySalesAmount,
+        ),
+        currentMonthOrderCount: summary.currentMonthOrderCount,
+        currentMonthOrderComparisonPercent: percentChange(
+          summary.currentMonthOrderCount,
+          summary.previousMonthOrderCount,
+        ),
+        currentMonthRevenue: summary.currentMonthRevenue,
+        currentMonthRevenueComparisonPercent: percentChange(
+          summary.currentMonthRevenue,
+          summary.previousMonthRevenue,
+        ),
+        periodOrderCount: summary.periodOrderCount,
+        orderCountComparisonPercent: percentChange(
+          summary.periodOrderCount,
+          summary.previousOrderCount,
+        ),
+        periodRevenue: summary.periodRevenue,
+        revenueComparisonPercent: percentChange(
+          summary.periodRevenue,
+          summary.previousRevenue,
+        ),
+        currency: summary.currency ?? "IRR",
+      },
       sellerSummary: {
         newPurchaseRequests: summary.newPurchaseRequests,
         pendingCreditPurchaseRequests: summary.pendingCreditPurchaseRequests,
@@ -379,6 +594,44 @@ export class DashboardRepository extends AbstractRepository {
       recentOrders: [...recentOrders],
       topSuppliers: [...topSuppliers],
       topProducts: [...topProducts],
+      managerPerformance: [
+        {
+          key: "sales",
+          value: summary.salesAmount,
+          previousValue: summary.previousSalesAmount,
+          changePercent: percentChange(
+            summary.salesAmount,
+            summary.previousSalesAmount,
+          ),
+        },
+        {
+          key: "orders",
+          value: summary.periodOrderCount,
+          previousValue: summary.previousOrderCount,
+          changePercent: percentChange(
+            summary.periodOrderCount,
+            summary.previousOrderCount,
+          ),
+        },
+        {
+          key: "averageOrderValue",
+          value: averageOrderValue,
+          previousValue: previousAverageOrderValue,
+          changePercent: percentChange(
+            averageOrderValue,
+            previousAverageOrderValue,
+          ),
+        },
+        {
+          key: "fulfillmentRate",
+          value: fulfillmentRate,
+          previousValue: previousFulfillmentRate,
+          changePercent: percentChange(
+            fulfillmentRate,
+            previousFulfillmentRate,
+          ),
+        },
+      ],
     };
   }
 }

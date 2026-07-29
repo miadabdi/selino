@@ -64,6 +64,29 @@ export const RemoveItem = () =>
     AuthenticationErrors(),
   );
 
+export const UpdateItem = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "Update an open purchase-request item quantity",
+      description:
+        "Atomically adjusts the reserved stock by the quantity difference, updates the priced line total, and recalculates the open request total.",
+    }),
+    NumericIdParam("itemId", "Purchase-request item ID"),
+    ApiOkResponse({
+      description: "The purchase-request item with its updated quantity.",
+    }),
+    ApiNotFoundResponse({
+      description: "The item is missing, expired, or no longer open.",
+      type: ApiErrorResponse,
+    }),
+    ApiConflictResponse({
+      description:
+        "The quantity violates inventory limits or reserved stock cannot be adjusted consistently.",
+      type: ApiErrorResponse,
+    }),
+    AuthenticationErrors(),
+  );
+
 export const GetActive = () =>
   applyDecorators(
     ApiOperation({

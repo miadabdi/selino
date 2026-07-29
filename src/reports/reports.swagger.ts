@@ -21,7 +21,7 @@ export const GetReport = () =>
     ApiOperation({
       summary: "Get manager report aggregates",
       description:
-        "Aggregates invoices, orders, wallet balances, credit usage, trends, order statuses, and supplier performance.",
+        "Aggregates invoices, orders, wallet balances, credit usage, trends, order statuses, and supplier performance. Sales and order growth compare against the immediately preceding equal-length period; delivery rate remains a separate metric.",
     }),
     businessId(),
     ApiOkResponse({ description: "The report read model." }),

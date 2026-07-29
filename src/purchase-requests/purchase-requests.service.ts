@@ -22,6 +22,7 @@ import { NotificationChannel } from "../notification/notification.enums";
 import { OrdersRepository } from "../orders/orders.repository";
 import { AddPurchaseRequestItemDto } from "./dto/add-purchase-request-item.dto";
 import type { ListPurchaseRequestsQueryDto } from "./dto/list-purchase-requests-query.dto";
+import type { UpdatePurchaseRequestItemDto } from "./dto/update-purchase-request-item.dto";
 import { PurchaseRequestsRepository } from "./purchase-requests.repository";
 
 @Injectable()
@@ -356,6 +357,123 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async updateItem(
+    user: AuthenticatedUser,
+    itemId: number,
+    dto: UpdatePurchaseRequestItemDto,
+  ) {
+    return this.purchaseRequestsRepository.transaction(async (tx) => {
+      const item =
+        await this.purchaseRequestsRepository.findItemWithRequestForUpdate(
+          itemId,
+          tx,
+        );
+
+      if (!item) {
+        throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
+      }
+
+      const request = item.purchaseRequest;
+      this.resolvePurchaseRequestScope(
+        user,
+        request.buyerBusinessAccountId,
+        request.requesterId,
+        "seller.purchase-requests.cancel.own",
+        "seller.purchase-requests.cancel.all",
+      );
+
+      if (
+        request.status !== "new" ||
+        request.expiresAt == null ||
+        request.expiresAt <= new Date()
+      ) {
+        throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
+      }
+
+      if (item.storeInventoryId == null) {
+        throwHttpError(HttpStatus.CONFLICT, "Inventory linkage missing");
+      }
+
+      const inventory = await this.inventoriesRepository.findInventoryById(
+        item.storeInventoryId,
+        tx,
+      );
+      if (!inventory) {
+        throwHttpError(HttpStatus.CONFLICT, "Inventory linkage missing");
+      }
+
+      if (dto.qty < inventory.minOrderQty) {
+        throwHttpError(
+          HttpStatus.CONFLICT,
+          "Quantity is below min_order_qty",
+          "qty",
+        );
+      }
+
+      const activeReservationRows =
+        await this.purchaseRequestsRepository.findActiveReservationRows(
+          request.requesterId,
+          item.storeInventoryId,
+          new Date(),
+          tx,
+        );
+      const existingQty = activeReservationRows.reduce(
+        (sum, row) => sum + row.qty,
+        0,
+      );
+      if (
+        inventory.maxOrderQty != null &&
+        existingQty - item.qty + dto.qty > inventory.maxOrderQty
+      ) {
+        throwHttpError(
+          HttpStatus.CONFLICT,
+          "Quantity exceeds max_order_qty",
+          "qty",
+        );
+      }
+
+      const delta = dto.qty - item.qty;
+      if (delta > 0) {
+        const reserved = await this.inventoriesRepository.reserveStock(
+          item.storeInventoryId,
+          delta,
+          tx,
+        );
+        if (reserved.length === 0) {
+          throwHttpError(HttpStatus.CONFLICT, "Out of stock");
+        }
+      } else if (delta < 0) {
+        const released = await this.inventoriesRepository.releaseReservedStock(
+          item.storeInventoryId,
+          -delta,
+          tx,
+        );
+        if (released.length === 0) {
+          throwHttpError(HttpStatus.CONFLICT, "Stock reservation conflict");
+        }
+      }
+
+      const updated =
+        await this.purchaseRequestsRepository.updateItemQuantityForOpenRequest(
+          item.id,
+          item.purchaseRequestId,
+          dto.qty,
+          item.price,
+          tx,
+        );
+      if (!updated) {
+        throwHttpError(HttpStatus.CONFLICT, "Purchase request changed");
+      }
+
+      await this.purchaseRequestsRepository.recalculateTotal(
+        item.purchaseRequestId,
+        tx,
+      );
+
+      return updated;
+    });
+  }
+
   async getActive(user: AuthenticatedUser, buyerBusinessAccountId: number) {
     this.resolvePurchaseRequestScope(
       user,
@@ -377,6 +495,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     const scope = this.resolveListScope(user, query.buyerBusinessAccountId);
     const hasFilters =
       query.status != null ||
+      query.statusGroup != null ||
       query.search != null ||
       query.from != null ||
       query.to != null;
@@ -388,6 +507,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
           scope.requesterId,
           {
             status: query.status,
+            statuses: getPurchaseRequestGroupStatuses(query.statusGroup),
             search: query.search,
             from: query.from,
             to: query.to,
@@ -831,4 +951,17 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       this.isRunningExpiry = false;
     }
   }
+}
+
+function getPurchaseRequestGroupStatuses(
+  group: ListPurchaseRequestsQueryDto["statusGroup"],
+) {
+  if (group === "new") return ["new"] as const;
+  if (group === "under_review") {
+    return ["pending_credit_approval"] as const;
+  }
+  if (group === "completed") {
+    return ["confirmed", "cancelled", "expired"] as const;
+  }
+  return undefined;
 }

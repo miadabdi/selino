@@ -43,6 +43,21 @@ export class BusinessAccountProfileDto {
   @ApiPropertyOptional({ nullable: true })
   logoUrl!: string | null;
 
+  @ApiPropertyOptional({ nullable: true })
+  licenseNumber!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: "2024-01-01" })
+  licenseIssuedAt!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, example: "2028-01-01" })
+  licenseExpiresAt!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  licenseFileId!: number | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  licenseUrl!: string | null;
+
   @ApiProperty()
   createdAt!: Date;
 

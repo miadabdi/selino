@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -22,6 +23,7 @@ import {
 import { AddPurchaseRequestItemDto } from "./dto/add-purchase-request-item.dto";
 import { GetActivePurchaseRequestQueryDto } from "./dto/get-active-purchase-request-query.dto";
 import { ListPurchaseRequestsQueryDto } from "./dto/list-purchase-requests-query.dto";
+import { UpdatePurchaseRequestItemDto } from "./dto/update-purchase-request-item.dto";
 import { PurchaseRequestsService } from "./purchase-requests.service";
 import * as Swagger from "./purchase-requests.swagger";
 
@@ -39,6 +41,21 @@ export class PurchaseRequestsController {
   addItem(@Req() req: Request, @Body() dto: AddPurchaseRequestItemDto) {
     const user = req.user as AuthenticatedUser;
     return this.purchaseRequestsService.addItem(user, dto);
+  }
+
+  @RequireAnyPermission(
+    "seller.purchase-requests.cancel.own",
+    "seller.purchase-requests.cancel.all",
+  )
+  @Patch("items/:itemId")
+  @Swagger.UpdateItem()
+  updateItem(
+    @Req() req: Request,
+    @Param("itemId", ParseIntPipe) itemId: number,
+    @Body() dto: UpdatePurchaseRequestItemDto,
+  ) {
+    const user = req.user as AuthenticatedUser;
+    return this.purchaseRequestsService.updateItem(user, itemId, dto);
   }
 
   @RequireAnyPermission(

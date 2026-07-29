@@ -441,7 +441,7 @@ export class TradeNetworkRepository extends AbstractRepository {
         : eq(tradeCreditAgreements.status, query.status),
       isNull(tradeCreditAgreements.deletedAt),
     );
-    const [items, countRows] = await Promise.all([
+    const [items, countRows, summaryRows] = await Promise.all([
       txContext.query.tradeCreditAgreements.findMany({
         where: condition,
         with: {
@@ -456,7 +456,22 @@ export class TradeNetworkRepository extends AbstractRepository {
         .select({ total: sql<number>`count(*)::int` })
         .from(tradeCreditAgreements)
         .where(condition),
+      txContext
+        .select({
+          creditLimit: sql<number>`coalesce(sum(${tradeCreditAgreements.creditLimit}), 0)::float8`,
+          usedCredit: sql<number>`coalesce(sum(${tradeCreditAgreements.usedCredit}), 0)::float8`,
+          activeAgreementCount: sql<number>`count(*) filter (
+            where ${tradeCreditAgreements.isActive} = true
+          )::int`,
+        })
+        .from(tradeCreditAgreements)
+        .where(condition),
     ]);
+    const summary = summaryRows[0] ?? {
+      creditLimit: 0,
+      usedCredit: 0,
+      activeAgreementCount: 0,
+    };
     return {
       items: items.map((agreement) => ({
         ...agreement,
@@ -468,6 +483,17 @@ export class TradeNetworkRepository extends AbstractRepository {
       page: query.page,
       limit: query.limit,
       total: countRows[0]?.total ?? 0,
+      summary: {
+        ...summary,
+        availableCredit: Math.max(
+          0,
+          Number(summary.creditLimit) - Number(summary.usedCredit),
+        ),
+        utilizationPercent:
+          Number(summary.creditLimit) > 0
+            ? (Number(summary.usedCredit) / Number(summary.creditLimit)) * 100
+            : 0,
+      },
     };
   }
 
@@ -541,35 +567,178 @@ export class TradeNetworkRepository extends AbstractRepository {
     query: ListCreditTransactionsQueryDto,
     txContext: TXContext = this.db,
   ) {
-    const condition = and(
-      eq(tradeCreditTransactions.agreementId, agreementId),
-      query.type == null
-        ? undefined
-        : eq(tradeCreditTransactions.type, query.type),
-      query.from == null
-        ? undefined
-        : gte(tradeCreditTransactions.occurredAt, new Date(query.from)),
-      query.to == null
-        ? undefined
-        : lte(tradeCreditTransactions.occurredAt, new Date(query.to)),
-    );
-    const [items, countRows] = await Promise.all([
-      txContext.query.tradeCreditTransactions.findMany({
-        where: condition,
-        orderBy: (table) => [desc(table.occurredAt), desc(table.id)],
-        limit: query.limit,
-        offset: (query.page - 1) * query.limit,
-      }),
-      txContext
-        .select({ total: sql<number>`count(*)::int` })
-        .from(tradeCreditTransactions)
-        .where(condition),
+    const statusExpression = sql`
+      case
+        when invoice.status in (
+          'pending_credit_approval', 'pending', 'sent'
+        ) then 'pending'
+        when invoice.status in (
+          'rejected', 'expired', 'cancelled'
+        ) then 'cancelled'
+        else 'completed'
+      end
+    `;
+    const search = query.search?.trim();
+    const condition = sql`
+      transaction.agreement_id = ${agreementId}
+      ${query.type ? sql`and transaction.type = ${query.type}` : sql``}
+      ${
+        query.from
+          ? sql`and transaction.occurred_at >= ${new Date(query.from)}`
+          : sql``
+      }
+      ${
+        query.to
+          ? sql`and transaction.occurred_at <= ${new Date(query.to)}`
+          : sql``
+      }
+      ${query.status ? sql`and ${statusExpression} = ${query.status}` : sql``}
+      ${
+        search
+          ? sql`and (
+              concat('CRD-', transaction.id) ilike ${`%${search}%`}
+              or transaction.description ilike ${`%${search}%`}
+              or buyer.name ilike ${`%${search}%`}
+              or supplier.name ilike ${`%${search}%`}
+              or product.title ilike ${`%${search}%`}
+            )`
+          : sql``
+      }
+    `;
+    type CreditTransactionRow = {
+      id: number;
+      createdAt: Date;
+      agreementId: number;
+      type: string;
+      amount: number;
+      currency: string;
+      referenceType: string | null;
+      referenceId: number | null;
+      description: string | null;
+      metadata: Record<string, unknown> | null;
+      occurredAt: Date;
+      createdBy: number | null;
+      transactionCode: string;
+      buyerName: string;
+      supplierName: string;
+      productName: string | null;
+      productId: number | null;
+      status: "pending" | "completed" | "cancelled";
+    };
+    const offset = (query.page - 1) * query.limit;
+    const [items, countRows, aggregateRows] = await Promise.all([
+      txContext.execute<CreditTransactionRow>(sql`
+        select
+          transaction.id,
+          transaction.created_at as "createdAt",
+          transaction.agreement_id as "agreementId",
+          transaction.type,
+          transaction.amount::float8 as amount,
+          transaction.currency,
+          transaction.reference_type as "referenceType",
+          transaction.reference_id as "referenceId",
+          transaction.description,
+          transaction.metadata,
+          transaction.occurred_at as "occurredAt",
+          transaction.created_by as "createdBy",
+          concat('CRD-', transaction.id) as "transactionCode",
+          buyer.name as "buyerName",
+          supplier.name as "supplierName",
+          product.title as "productName",
+          product.id as "productId",
+          ${statusExpression} as status
+        from trade_credit_transactions transaction
+        inner join trade_credit_agreements agreement
+          on agreement.id = transaction.agreement_id
+        inner join business_accounts buyer
+          on buyer.id = agreement.buyer_business_account_id
+        inner join business_accounts supplier
+          on supplier.id = agreement.supplier_business_account_id
+        left join invoices invoice
+          on transaction.reference_type = 'invoice'
+          and invoice.id = transaction.reference_id
+        left join lateral (
+          select p.id, p.title
+          from invoice_items item
+          inner join products p on p.id = item.product_id
+          where item.invoice_id = invoice.id
+          order by item.id
+          limit 1
+        ) product on true
+        where ${condition}
+        order by transaction.occurred_at desc, transaction.id desc
+        limit ${query.limit}
+        offset ${offset}
+      `),
+      txContext.execute<{ total: number }>(sql`
+        select count(*)::int as total
+        from trade_credit_transactions transaction
+        inner join trade_credit_agreements agreement
+          on agreement.id = transaction.agreement_id
+        inner join business_accounts buyer
+          on buyer.id = agreement.buyer_business_account_id
+        inner join business_accounts supplier
+          on supplier.id = agreement.supplier_business_account_id
+        left join invoices invoice
+          on transaction.reference_type = 'invoice'
+          and invoice.id = transaction.reference_id
+        left join lateral (
+          select p.id, p.title
+          from invoice_items item
+          inner join products p on p.id = item.product_id
+          where item.invoice_id = invoice.id
+          order by item.id
+          limit 1
+        ) product on true
+        where ${condition}
+      `),
+      txContext.execute<{
+        transactionCount: number;
+        debitAmount: number;
+        creditAmount: number;
+        netAmount: number;
+      }>(sql`
+        select
+          count(*)::int as "transactionCount",
+          coalesce(sum(transaction.amount) filter (
+            where transaction.amount > 0
+          ), 0)::float8 as "debitAmount",
+          abs(coalesce(sum(transaction.amount) filter (
+            where transaction.amount < 0
+          ), 0))::float8 as "creditAmount",
+          coalesce(sum(transaction.amount), 0)::float8 as "netAmount"
+        from trade_credit_transactions transaction
+        inner join trade_credit_agreements agreement
+          on agreement.id = transaction.agreement_id
+        inner join business_accounts buyer
+          on buyer.id = agreement.buyer_business_account_id
+        inner join business_accounts supplier
+          on supplier.id = agreement.supplier_business_account_id
+        left join invoices invoice
+          on transaction.reference_type = 'invoice'
+          and invoice.id = transaction.reference_id
+        left join lateral (
+          select p.id, p.title
+          from invoice_items item
+          inner join products p on p.id = item.product_id
+          where item.invoice_id = invoice.id
+          order by item.id
+          limit 1
+        ) product on true
+        where ${condition}
+      `),
     ]);
     return {
-      items,
+      items: [...items],
       page: query.page,
       limit: query.limit,
       total: countRows[0]?.total ?? 0,
+      summary: aggregateRows[0] ?? {
+        transactionCount: 0,
+        debitAmount: 0,
+        creditAmount: 0,
+        netAmount: 0,
+      },
     };
   }
 

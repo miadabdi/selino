@@ -48,10 +48,26 @@ export type DashboardOverview = {
     availableCredit: number;
     currency: string;
   };
+  managerKpis: {
+    todaySalesAmount: number;
+    todaySalesComparisonPercent: number | null;
+    currentMonthOrderCount: number;
+    currentMonthOrderComparisonPercent: number | null;
+    currentMonthRevenue: number;
+    currentMonthRevenueComparisonPercent: number | null;
+    periodOrderCount: number;
+    orderCountComparisonPercent: number | null;
+    periodRevenue: number;
+    revenueComparisonPercent: number | null;
+    currency: string;
+  };
   salesTrend: Array<{
     date: string;
     amount: number;
     orderCount: number;
+    purchaseAmount: number;
+    deliveredOrderCount: number;
+    averageOrderValue: number;
   }>;
   recentOrders: Array<{
     id: number;
@@ -59,10 +75,17 @@ export type DashboardOverview = {
     invoiceId: number;
     invoiceNumber: string;
     counterpartyName: string;
+    buyerName: string;
+    supplierName: string;
     status: string;
+    itemCount: number;
+    quantity: number;
     totalAmount: number;
     currency: string;
     createdAt: Date;
+    shipmentId: number | null;
+    shipmentStatus: string | null;
+    estimatedDeliveryAt: Date | null;
   }>;
   topSuppliers: Array<{
     id: number;
@@ -74,8 +97,19 @@ export type DashboardOverview = {
   topProducts: Array<{
     id: number;
     name: string;
+    productCode: string;
+    model: string | null;
+    defaultImageFileId: number | null;
+    attributes: Record<string, unknown> | null;
     supplierName: string;
+    supplierNames: string[];
     quantity: number;
     totalAmount: number;
+  }>;
+  managerPerformance: Array<{
+    key: "sales" | "orders" | "averageOrderValue" | "fulfillmentRate";
+    value: number;
+    previousValue: number;
+    changePercent: number | null;
   }>;
 };

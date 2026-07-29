@@ -5,6 +5,8 @@ import {
   IsIn,
   IsInt,
   IsOptional,
+  IsString,
+  MaxLength,
   Max,
   Min,
 } from "class-validator";
@@ -16,6 +18,24 @@ export class ListCreditTransactionsQueryDto {
   @IsIn(["purchase", "return", "adjustment", "settlement"])
   @IsOptional()
   type?: "purchase" | "return" | "adjustment" | "settlement";
+
+  @ApiPropertyOptional({
+    description:
+      "Business status derived from the referenced invoice or settlement.",
+    enum: ["pending", "completed", "cancelled"],
+  })
+  @IsIn(["pending", "completed", "cancelled"])
+  @IsOptional()
+  status?: "pending" | "completed" | "cancelled";
+
+  @ApiPropertyOptional({
+    description:
+      "Transaction code, product, description, or agreement-party search.",
+  })
+  @IsString()
+  @MaxLength(100)
+  @IsOptional()
+  search?: string;
 
   @ApiPropertyOptional({ format: "date-time" })
   @IsDateString()

@@ -7,6 +7,7 @@ import {
   gt,
   gte,
   ilike,
+  inArray,
   lt,
   lte,
   or,
@@ -138,6 +139,81 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     });
   }
 
+  async findItemWithRequestForUpdate(itemId: number, txContext: TXContext) {
+    const [row] = await txContext
+      .select({
+        id: purchaseRequestItems.id,
+        qty: purchaseRequestItems.qty,
+        price: purchaseRequestItems.price,
+        storeInventoryId: purchaseRequestItems.storeInventoryId,
+        purchaseRequestId: purchaseRequestItems.purchaseRequestId,
+        buyerBusinessAccountId: purchaseRequests.buyerBusinessAccountId,
+        requesterId: purchaseRequests.requesterId,
+        status: purchaseRequests.status,
+        expiresAt: purchaseRequests.expiresAt,
+      })
+      .from(purchaseRequestItems)
+      .innerJoin(
+        purchaseRequests,
+        eq(purchaseRequests.id, purchaseRequestItems.purchaseRequestId),
+      )
+      .where(eq(purchaseRequestItems.id, itemId))
+      .limit(1)
+      .for("update");
+
+    if (!row) return undefined;
+
+    return {
+      id: row.id,
+      qty: row.qty,
+      price: row.price,
+      storeInventoryId: row.storeInventoryId,
+      purchaseRequestId: row.purchaseRequestId,
+      purchaseRequest: {
+        buyerBusinessAccountId: row.buyerBusinessAccountId,
+        requesterId: row.requesterId,
+        status: row.status,
+        expiresAt: row.expiresAt,
+      },
+    };
+  }
+
+  async updateItemQuantityForOpenRequest(
+    itemId: number,
+    purchaseRequestId: number,
+    qty: number,
+    price: number,
+    txContext: TXContext = this.db,
+  ) {
+    const [updated] = await txContext
+      .update(purchaseRequestItems)
+      .set({
+        qty,
+        total: price * qty,
+      })
+      .where(
+        and(
+          eq(purchaseRequestItems.id, itemId),
+          eq(purchaseRequestItems.purchaseRequestId, purchaseRequestId),
+          exists(
+            txContext
+              .select({ id: purchaseRequests.id })
+              .from(purchaseRequests)
+              .where(
+                and(
+                  eq(purchaseRequests.id, purchaseRequestId),
+                  eq(purchaseRequests.status, "new"),
+                  gt(purchaseRequests.expiresAt, new Date()),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning();
+
+    return updated;
+  }
+
   async deleteItemForOpenRequest(
     itemId: number,
     purchaseRequestId: number,
@@ -214,6 +290,7 @@ export class PurchaseRequestsRepository extends AbstractRepository {
       with: {
         items: {
           with: {
+            product: true,
             storeInventory: {
               with: {
                 businessAccount: true,
@@ -237,6 +314,13 @@ export class PurchaseRequestsRepository extends AbstractRepository {
         | "confirmed"
         | "cancelled"
         | "expired";
+      statuses?: readonly (
+        | "new"
+        | "pending_credit_approval"
+        | "confirmed"
+        | "cancelled"
+        | "expired"
+      )[];
       search?: string;
       from?: string;
       to?: string;
@@ -254,6 +338,9 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     }
     if (filters?.status != null) {
       conditions.push(eq(purchaseRequests.status, filters.status));
+    }
+    if (filters?.statuses?.length) {
+      conditions.push(inArray(purchaseRequests.status, filters.statuses));
     }
     if (filters?.search?.trim()) {
       const term = `%${filters.search.trim()}%`;
@@ -278,6 +365,7 @@ export class PurchaseRequestsRepository extends AbstractRepository {
           buyerBusinessAccount: true,
           items: {
             with: {
+              product: true,
               storeInventory: {
                 with: {
                   businessAccount: true,

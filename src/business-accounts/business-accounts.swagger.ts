@@ -48,7 +48,7 @@ export const GetById = () =>
     ApiOperation({
       summary: "Get a business account",
       description:
-        "Returns one active business account by ID. Soft-deleted businesses are treated as missing.",
+        "Returns one active business account by ID with resolved logo and business-license URLs. Soft-deleted businesses are treated as missing.",
     }),
     businessId(),
     ApiOkResponse({
@@ -68,7 +68,7 @@ export const Update = () =>
     ApiOperation({
       summary: "Update a business account",
       description:
-        "Updates supplied business details. Renaming regenerates the unique slug; uploading a logo replaces and soft-deletes the old logo.",
+        "Updates supplied business and license details. Renaming regenerates the unique slug; uploading a logo or license image replaces and soft-deletes the previous file.",
     }),
     businessId(),
     ApiBody({ type: UpdateBusinessAccountBody }),

@@ -12,12 +12,12 @@ import {
   Patch,
   Post,
   Req,
-  UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { FileInterceptor } from "@nestjs/platform-express";
+import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import type { Request } from "express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard.js";
@@ -55,10 +55,16 @@ export class BusinessAccountLogoUploadInterceptor implements NestInterceptor {
     const maxLogoBytes = this.configService.getOrThrow<number>(
       "UPLOAD_MAX_STORE_LOGO_BYTES",
     );
-    const MixinInterceptor = FileInterceptor("logo", {
-      limits: { fileSize: maxLogoBytes },
-      fileFilter: imageFileFilter,
-    });
+    const MixinInterceptor = FileFieldsInterceptor(
+      [
+        { name: "logo", maxCount: 1 },
+        { name: "license", maxCount: 1 },
+      ],
+      {
+        limits: { fileSize: maxLogoBytes },
+        fileFilter: imageFileFilter,
+      },
+    );
     this.interceptor = new MixinInterceptor();
   }
 
@@ -81,10 +87,14 @@ export class BusinessAccountsController {
   create(
     @Req() req: Request,
     @Body() dto: CreateBusinessAccountDto,
-    @UploadedFile() logo?: Express.Multer.File,
+    @UploadedFiles()
+    files?: {
+      logo?: Express.Multer.File[];
+      license?: Express.Multer.File[];
+    },
   ) {
     const user = req.user as { id: number };
-    return this.businessAccountsService.create(user.id, dto, logo);
+    return this.businessAccountsService.create(user.id, dto, files?.logo?.[0]);
   }
 
   @RequireAnyPermission(...profileReadPermissions)
@@ -105,13 +115,18 @@ export class BusinessAccountsController {
     @Req() req: Request,
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateBusinessAccountDto,
-    @UploadedFile() logo?: Express.Multer.File,
+    @UploadedFiles()
+    files?: {
+      logo?: Express.Multer.File[];
+      license?: Express.Multer.File[];
+    },
   ) {
     return this.businessAccountsService.update(
       req.user as AuthenticatedUser,
       id,
       dto,
-      logo,
+      files?.logo?.[0],
+      files?.license?.[0],
     );
   }
 

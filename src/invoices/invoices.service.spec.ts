@@ -1,6 +1,9 @@
 import type { AuthenticatedUser } from "../auth/interfaces/index";
 import { InvoiceExportService } from "./invoice-export.service";
-import { InvoicesRepository } from "./invoices.repository";
+import {
+  getVisibleInvoiceStatuses,
+  InvoicesRepository,
+} from "./invoices.repository";
 import { InvoicesService } from "./invoices.service";
 import { OrdersRepository } from "../orders/orders.repository";
 
@@ -37,6 +40,7 @@ describe("InvoicesService", () => {
   const repository = {
     findForBusiness: jest.fn(),
     findManyForExport: jest.fn(),
+    listForBusiness: jest.fn(),
     transaction: jest.fn((callback: (tx: object) => unknown) => callback({})),
     transitionStatus: jest.fn(),
   };
@@ -72,6 +76,54 @@ describe("InvoicesService", () => {
     await expect(
       service.get(makeUser(["seller.invoices.active.read.own"]), 20, 30),
     ).resolves.toBe(invoice);
+  });
+
+  it("treats a delivered purchase invoice as active", async () => {
+    const invoice = makeInvoice("delivered");
+    repository.findForBusiness.mockResolvedValue(invoice);
+
+    await expect(
+      service.get(makeUser(["seller.invoices.active.read.own"]), 20, 30),
+    ).resolves.toBe(invoice);
+  });
+
+  it("lists recent invoices for an own-scoped user with both permissions", async () => {
+    repository.listForBusiness.mockResolvedValue({
+      items: [makeInvoice("paid")],
+      page: 1,
+      limit: 10,
+      total: 1,
+    });
+    const query = {
+      direction: "purchase" as const,
+      view: "recent" as const,
+      page: 1,
+      limit: 10,
+    };
+
+    await expect(
+      service.list(
+        makeUser([
+          "seller.invoices.active.read.own",
+          "seller.invoices.history.read.own",
+        ]),
+        20,
+        query,
+      ),
+    ).resolves.toMatchObject({ total: 1 });
+    expect(repository.listForBusiness).toHaveBeenCalledWith(20, query, 1);
+  });
+
+  it("requires both active and history permissions for recent invoices", () => {
+    expect(() =>
+      service.list(makeUser(["seller.invoices.active.read.own"]), 20, {
+        direction: "purchase",
+        view: "recent",
+        page: 1,
+        limit: 10,
+      }),
+    ).toThrow(expect.objectContaining({ status: 403 }));
+    expect(repository.listForBusiness).not.toHaveBeenCalled();
   });
 
   it("exports exactly the invoices selected by the user", async () => {
@@ -167,6 +219,36 @@ describe("InvoicesService", () => {
       1,
       null,
       {},
+    );
+  });
+});
+
+describe("invoice list status scopes", () => {
+  it("includes delivered purchases in the active view", () => {
+    expect(getVisibleInvoiceStatuses("purchase", "active")).toEqual([
+      "pending_credit_approval",
+      "pending",
+      "sent",
+      "delivered",
+    ]);
+  });
+
+  it("includes every buyer-visible status in the recent view", () => {
+    expect(getVisibleInvoiceStatuses("purchase", "recent")).toEqual([
+      "pending_credit_approval",
+      "pending",
+      "sent",
+      "delivered",
+      "paid",
+      "rejected",
+      "expired",
+      "cancelled",
+    ]);
+  });
+
+  it("keeps provisional buyer invoices hidden from supplier recent lists", () => {
+    expect(getVisibleInvoiceStatuses("sale", "recent")).not.toContain(
+      "pending_credit_approval",
     );
   });
 });

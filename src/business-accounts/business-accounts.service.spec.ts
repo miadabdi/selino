@@ -83,6 +83,9 @@ describe("BusinessAccountsService profile, team, and addresses", () => {
         name: "Store",
         slug: "store",
         logoFileId: null,
+        licenseFileId: null,
+        licenseIssuedAt: null,
+        licenseExpiresAt: null,
       }),
       transaction: jest.fn((callback) => callback({})),
       updateBusinessAccountById: jest
@@ -115,8 +118,95 @@ describe("BusinessAccountsService profile, team, and addresses", () => {
       "Store",
       "store",
       null,
+      null,
       {},
     );
+  });
+
+  it("uploads and returns a business-license file without changing the logo", async () => {
+    const license = {
+      buffer: Buffer.from("license"),
+      originalname: "license.png",
+      mimetype: "image/png",
+    } as Express.Multer.File;
+    const repository = {
+      findActiveBusinessAccountById: jest.fn().mockResolvedValue({
+        id: 200,
+        name: "Store",
+        slug: "store",
+        logoFileId: 11,
+        licenseFileId: null,
+        licenseIssuedAt: null,
+        licenseExpiresAt: null,
+      }),
+      transaction: jest.fn((callback) => callback({})),
+      updateBusinessAccountById: jest.fn().mockResolvedValue({
+        id: 200,
+        logoFileId: 11,
+        licenseFileId: 22,
+      }),
+    };
+    const files = {
+      uploadFromBuffer: jest.fn().mockResolvedValue({ id: 22 }),
+      resolveUrl: jest
+        .fn()
+        .mockResolvedValueOnce("logo-url")
+        .mockResolvedValueOnce("license-url"),
+    };
+    const service = new BusinessAccountsService(
+      repository as never,
+      files as never,
+    );
+
+    await expect(
+      service.update(
+        businessUser(["manager.dashboard.overview"]),
+        200,
+        { licenseNumber: "LIC-22" },
+        undefined,
+        license,
+      ),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        licenseFileId: 22,
+        logoUrl: "logo-url",
+        licenseUrl: "license-url",
+      }),
+    );
+    expect(repository.updateBusinessAccountById).toHaveBeenCalledWith(
+      200,
+      { licenseNumber: "LIC-22" },
+      "Store",
+      "store",
+      11,
+      22,
+      {},
+    );
+  });
+
+  it("rejects a license expiry before its issue date", async () => {
+    const repository = {
+      findActiveBusinessAccountById: jest.fn().mockResolvedValue({
+        id: 200,
+        name: "Store",
+        slug: "store",
+        logoFileId: null,
+        licenseFileId: null,
+        licenseIssuedAt: null,
+        licenseExpiresAt: null,
+      }),
+    };
+    const service = new BusinessAccountsService(
+      repository as never,
+      {} as never,
+    );
+
+    await expect(
+      service.update(businessUser(["manager.dashboard.overview"]), 200, {
+        licenseIssuedAt: "2026-01-02",
+        licenseExpiresAt: "2026-01-01",
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("rejects a cross-business profile read", async () => {

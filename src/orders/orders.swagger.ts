@@ -30,7 +30,7 @@ export const List = () =>
     ApiOperation({
       summary: "List and filter business orders",
       description:
-        "Returns paginated orders where the selected business is the buyer or supplier, with lifecycle filters.",
+        "Returns paginated orders where the selected business is the buyer or supplier, including real party names, invoice items and quantities, delivery address, and the latest linked shipment.",
     }),
     businessId(),
     ApiOkResponse({ description: "Paginated orders." }),

@@ -28,7 +28,7 @@ export const List = () =>
     ApiOperation({
       summary: "List tracked shipments",
       description:
-        "Returns paginated shipments for orders in which the selected business participates.",
+        "Returns paginated shipments with real buyer and supplier details, invoice item counts, delivery addresses, coordinates, delay state, and the directly linked order.",
     }),
     businessId(),
     ApiOkResponse({ description: "Paginated shipments." }),

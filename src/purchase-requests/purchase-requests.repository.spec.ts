@@ -58,3 +58,65 @@ describe("PurchaseRequestsRepository invoice numbering", () => {
     expect(insert).toHaveBeenCalledTimes(20);
   });
 });
+
+describe("PurchaseRequestsRepository seller list identity", () => {
+  const request = {
+    id: 50,
+    code: "PR-1405-000050",
+    items: [
+      {
+        id: 7,
+        productId: 11,
+        product: { id: 11, title: "کالای نمونه" },
+      },
+    ],
+  };
+
+  it("loads product identity and title for the active request", async () => {
+    const findFirst = jest.fn().mockResolvedValue(request);
+    const repository = new PurchaseRequestsRepository({
+      query: { purchaseRequests: { findFirst } },
+    } as never);
+
+    await expect(
+      repository.findActiveWithItemsByRequester(10, 100),
+    ).resolves.toBe(request);
+
+    const query = findFirst.mock.calls[0][0];
+    expect(query.with.items.with.product).toBe(true);
+    expect(request).toMatchObject({
+      code: "PR-1405-000050",
+      items: [
+        {
+          productId: 11,
+          product: { id: 11, title: "کالای نمونه" },
+        },
+      ],
+    });
+  });
+
+  it("loads product identity and title for paginated request rows", async () => {
+    const findMany = jest.fn().mockResolvedValue([request]);
+    const where = jest.fn().mockResolvedValue([{ total: 1 }]);
+    const from = jest.fn(() => ({ where }));
+    const select = jest.fn(() => ({ from }));
+    const repository = new PurchaseRequestsRepository({
+      query: { purchaseRequests: { findMany } },
+      select,
+    } as never);
+
+    await expect(
+      repository.listByBuyerBusiness(100, 1, 20, 10),
+    ).resolves.toEqual({
+      items: [request],
+      page: 1,
+      limit: 20,
+      total: 1,
+    });
+
+    const query = findMany.mock.calls[0][0];
+    expect(query.with.items.with.product).toBe(true);
+    expect(request.code).toBe("PR-1405-000050");
+    expect(request.items[0]?.product.title).toBe("کالای نمونه");
+  });
+});

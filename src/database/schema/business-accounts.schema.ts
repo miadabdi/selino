@@ -1,5 +1,6 @@
 import {
   AnyPgColumn,
+  date,
   integer,
   pgEnum,
   pgTable,
@@ -40,6 +41,13 @@ export const businessAccounts = pgTable("business_accounts", {
   logoFileId: integer("logo_file_id").references((): AnyPgColumn => files.id, {
     onDelete: "set null",
   }),
+  licenseNumber: varchar("license_number", { length: 100 }),
+  licenseIssuedAt: date("license_issued_at"),
+  licenseExpiresAt: date("license_expires_at"),
+  licenseFileId: integer("license_file_id").references(
+    (): AnyPgColumn => files.id,
+    { onDelete: "set null" },
+  ),
 });
 
 export type BusinessAccount = typeof businessAccounts.$inferSelect;

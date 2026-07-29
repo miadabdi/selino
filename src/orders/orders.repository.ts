@@ -1,5 +1,16 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import { AbstractRepository } from "../common/abstract.repository";
 import { DATABASE } from "../database/database.constants";
 import type { Database, TXContext } from "../database/database.types";
@@ -8,6 +19,7 @@ import {
   invoices,
   orders,
   orderStatusEvents,
+  businessAccounts,
 } from "../database/schema/index";
 import type { ListOrdersQueryDto } from "./dto/list-orders-query.dto";
 
@@ -100,6 +112,7 @@ export class OrdersRepository extends AbstractRepository {
         eq(orders.buyerBusinessAccountId, businessAccountId),
         eq(orders.supplierBusinessAccountId, businessAccountId),
       ),
+      isNull(orders.deletedAt),
     ];
     if (query.status) conditions.push(eq(orders.status, query.status));
     if (query.search) {
@@ -110,6 +123,14 @@ export class OrdersRepository extends AbstractRepository {
             select 1 from ${invoices}
             where ${invoices.id} = ${orders.invoiceId}
               and ${invoices.invoiceNumber} ilike ${`%${query.search}%`}
+          )`,
+          sql`exists (
+            select 1 from ${businessAccounts}
+            where ${businessAccounts.id} in (
+              ${orders.buyerBusinessAccountId},
+              ${orders.supplierBusinessAccountId}
+            )
+              and ${businessAccounts.name} ilike ${`%${query.search}%`}
           )`,
         ),
       );
@@ -125,6 +146,37 @@ export class OrdersRepository extends AbstractRepository {
     const [items, countRows] = await Promise.all([
       txContext.query.orders.findMany({
         where,
+        with: {
+          buyerBusinessAccount: {
+            columns: { id: true, name: true, logoFileId: true },
+          },
+          supplierBusinessAccount: {
+            columns: { id: true, name: true, logoFileId: true },
+          },
+          invoice: {
+            columns: { id: true, invoiceNumber: true },
+            with: {
+              items: {
+                with: {
+                  product: {
+                    columns: {
+                      id: true,
+                      title: true,
+                      model: true,
+                      defaultImageFileId: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          shippingAddress: true,
+          shipments: {
+            where: (table) => isNull(table.deletedAt),
+            orderBy: (table) => [desc(table.createdAt), desc(table.id)],
+            limit: 1,
+          },
+        },
         orderBy: (table) => [desc(table.createdAt), desc(table.id)],
         limit: query.limit,
         offset,
@@ -135,7 +187,7 @@ export class OrdersRepository extends AbstractRepository {
         .where(where),
     ]);
     return {
-      items,
+      items: items.map((order) => this.toOrderReadModel(order)),
       page: query.page,
       limit: query.limit,
       total: countRows[0]?.total ?? 0,
@@ -151,18 +203,41 @@ export class OrdersRepository extends AbstractRepository {
       where: (table) =>
         and(
           eq(table.id, orderId),
+          isNull(table.deletedAt),
           or(
             eq(table.buyerBusinessAccountId, businessAccountId),
             eq(table.supplierBusinessAccountId, businessAccountId),
           ),
         ),
+      with: {
+        buyerBusinessAccount: {
+          columns: { id: true, name: true, logoFileId: true },
+        },
+        supplierBusinessAccount: {
+          columns: { id: true, name: true, logoFileId: true },
+        },
+        invoice: {
+          with: {
+            items: {
+              with: {
+                product: true,
+              },
+            },
+          },
+        },
+        shippingAddress: true,
+        shipments: {
+          where: (table) => isNull(table.deletedAt),
+          orderBy: (table) => [desc(table.createdAt), desc(table.id)],
+        },
+      },
     });
     if (!order) return undefined;
     const events = await txContext.query.orderStatusEvents.findMany({
       where: (table) => eq(table.orderId, order.id),
       orderBy: (table) => [desc(table.createdAt), desc(table.id)],
     });
-    return { ...order, events };
+    return { ...this.toOrderReadModel(order), events };
   }
 
   async findForBusinessForUpdate(
@@ -354,5 +429,43 @@ export class OrdersRepository extends AbstractRepository {
       reason: note ?? "Synchronized from order lifecycle",
     });
     return true;
+  }
+
+  private toOrderReadModel<
+    T extends {
+      buyerBusinessAccount: { name: string };
+      supplierBusinessAccount: { name: string };
+      invoice: {
+        invoiceNumber: string;
+        items: Array<{ qty: number }>;
+      };
+      shippingAddress: unknown;
+      shipments: Array<{
+        id: number;
+        status: string;
+        currentLatitude: number | null;
+        currentLongitude: number | null;
+        estimatedDeliveryAt: Date | null;
+        delayReason: string | null;
+      }>;
+    },
+  >(order: T) {
+    const shipment = order.shipments[0] ?? null;
+    return {
+      ...order,
+      buyerName: order.buyerBusinessAccount.name,
+      supplierName: order.supplierBusinessAccount.name,
+      invoiceNumber: order.invoice.invoiceNumber,
+      itemCount: order.invoice.items.length,
+      quantity: order.invoice.items.reduce((sum, item) => sum + item.qty, 0),
+      deliveryAddress: order.shippingAddress,
+      shipment,
+      shipmentId: shipment?.id ?? null,
+      shipmentStatus: shipment?.status ?? null,
+      currentLatitude: shipment?.currentLatitude ?? null,
+      currentLongitude: shipment?.currentLongitude ?? null,
+      estimatedDeliveryAt: shipment?.estimatedDeliveryAt ?? null,
+      delayReason: shipment?.delayReason ?? null,
+    };
   }
 }

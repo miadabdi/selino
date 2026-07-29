@@ -103,6 +103,7 @@ export class BusinessAccountsRepository extends AbstractRepository {
     name: string,
     slug: string | null,
     logoFileId: number | null,
+    licenseFileId: number | null,
     txContext: TXContext = this.db,
   ): Promise<BusinessAccount> {
     const [updated] = await txContext
@@ -120,6 +121,10 @@ export class BusinessAccountsRepository extends AbstractRepository {
         email: dto.email,
         website: dto.website,
         logoFileId,
+        licenseNumber: dto.licenseNumber,
+        licenseIssuedAt: dto.licenseIssuedAt,
+        licenseExpiresAt: dto.licenseExpiresAt,
+        licenseFileId,
         updatedAt: new Date(),
       })
       .where(eq(businessAccounts.id, id))

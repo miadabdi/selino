@@ -20,7 +20,7 @@ export const List = () =>
     ApiOperation({
       summary: "List purchase or sales invoices",
       description:
-        "Returns paginated invoices for a business. Purchase direction uses the business as buyer; sale direction uses it as supplier. Supplier sales exclude invoices awaiting credit approval.",
+        "Returns paginated invoices for a business. Purchase direction uses the business as buyer; sale direction uses it as supplier. The recent view returns all visible statuses for the home preview. Supplier sales exclude invoices awaiting credit approval.",
     }),
     NumericIdParam("businessAccountId", "Business account ID"),
     ApiOkResponse({ description: "Paginated invoices with line items." }),

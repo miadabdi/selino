@@ -22,7 +22,7 @@ export const UpdateProfile = () =>
     ApiOperation({
       summary: "Update the authenticated user's profile",
       description:
-        "Updates any supplied name or email fields and optionally replaces the profile picture. Changing the email marks it unverified and sends a new verification code. Images are cropped to the configured square profile size.",
+        "Updates any supplied name, email, national-code, or birth-date fields and optionally replaces the profile picture. Changing the email marks it unverified and sends a new verification code. Images are cropped to the configured square profile size.",
     }),
     ApiBody({ type: UpdateProfileBody }),
     ApiOkResponse({

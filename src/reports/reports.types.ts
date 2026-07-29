@@ -20,7 +20,12 @@ export type ManagerReport = {
     outstandingSales: number;
     orderCount: number;
     deliveredOrderCount: number;
+    deliveryRate: number;
     averageOrderValue: number;
+    previousGrossSales: number;
+    salesGrowthPercent: number | null;
+    previousOrderCount: number;
+    orderGrowthPercent: number | null;
     walletBalance: number;
     creditLimit: number;
     usedCredit: number;

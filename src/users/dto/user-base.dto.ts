@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   IsBoolean,
   IsDate,
+  IsDateString,
   IsEmail,
   IsInt,
   IsOptional,
@@ -81,6 +82,25 @@ export class UserBase {
   @IsString()
   @MaxLength(100)
   lastName?: string | null;
+
+  @ApiPropertyOptional({
+    description: "National identity code",
+    example: "0012345678",
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  nationalCode?: string | null;
+
+  @ApiPropertyOptional({
+    description: "Birth date in ISO calendar-date format",
+    example: "1990-04-21",
+    nullable: true,
+  })
+  @IsOptional()
+  @IsDateString()
+  birthDate?: string | null;
 
   @ApiPropertyOptional({
     description: "Last login timestamp",

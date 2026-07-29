@@ -380,6 +380,8 @@ type SeedUser = {
   firstName: string;
   lastName: string;
   isAdmin?: boolean;
+  nationalCode?: string;
+  birthDate?: string;
 };
 
 const seedUsers: readonly SeedUser[] = [
@@ -395,6 +397,8 @@ const seedUsers: readonly SeedUser[] = [
     email: "modir@example.com",
     firstName: "علی",
     lastName: "احمدی",
+    nationalCode: "0012345678",
+    birthDate: "1990-04-21",
   },
   {
     phone: "+989120000002",
@@ -416,14 +420,33 @@ const seedUsers: readonly SeedUser[] = [
   },
 ] as const;
 
-const seedBusinessAccount = {
+type SeedBusinessAccount = {
+  name: string;
+  slug: string;
+  type: "store" | "company";
+  description: string;
+  legalName?: string;
+  registrationNumber?: string;
+  nationalId?: string;
+  licenseNumber?: string;
+  licenseIssuedAt?: string;
+  licenseExpiresAt?: string;
+};
+
+const seedBusinessAccount: SeedBusinessAccount = {
   name: "فروشگاه آزمایشی سلینو",
   slug: "selino-demo-business",
   type: "store" as const,
   description: "حساب کسب و کار آزمایشی برای تست پنل فارسی",
+  legalName: "فروشگاه آزمایشی سلینو",
+  registrationNumber: "REG-SELINO-001",
+  nationalId: "14001234567",
+  licenseNumber: "LIC-SELINO-001",
+  licenseIssuedAt: "2024-01-01",
+  licenseExpiresAt: "2029-01-01",
 };
 
-const seedSupplierBusinessAccount = {
+const seedSupplierBusinessAccount: SeedBusinessAccount = {
   name: "تامین کننده آزمایشی سلینو",
   slug: "selino-demo-supplier",
   type: "company" as const,
@@ -611,6 +634,8 @@ async function upsertUser(db: SeedDb, data: SeedUser): Promise<User> {
         email: data.email,
         firstName: data.firstName,
         lastName: data.lastName,
+        nationalCode: data.nationalCode,
+        birthDate: data.birthDate,
         isAdmin: data.isAdmin ?? false,
         isPhoneVerified: true,
         isEmailVerified: true,
@@ -629,6 +654,8 @@ async function upsertUser(db: SeedDb, data: SeedUser): Promise<User> {
       email: data.email,
       firstName: data.firstName,
       lastName: data.lastName,
+      nationalCode: data.nationalCode,
+      birthDate: data.birthDate,
       isAdmin: data.isAdmin ?? false,
       isPhoneVerified: true,
       isEmailVerified: true,
@@ -650,7 +677,7 @@ async function upsertSupplierBusinessAccount(
 
 async function upsertBusinessAccountData(
   db: SeedDb,
-  data: typeof seedBusinessAccount | typeof seedSupplierBusinessAccount,
+  data: SeedBusinessAccount,
 ): Promise<BusinessAccount> {
   const existing = await db.query.businessAccounts.findFirst({
     where: (table) => eq(table.slug, data.slug),
@@ -663,6 +690,12 @@ async function upsertBusinessAccountData(
         name: data.name,
         type: data.type,
         description: data.description,
+        legalName: data.legalName,
+        registrationNumber: data.registrationNumber,
+        nationalId: data.nationalId,
+        licenseNumber: data.licenseNumber,
+        licenseIssuedAt: data.licenseIssuedAt,
+        licenseExpiresAt: data.licenseExpiresAt,
         updatedAt: new Date(),
       })
       .where(eq(businessAccounts.id, existing.id))

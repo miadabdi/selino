@@ -129,9 +129,12 @@ export class BusinessAccountsService {
     );
     const businessAccount = await this.getById(id);
 
-    const logoUrl = await this.resolveLogoUrl(businessAccount.logoFileId);
+    const [logoUrl, licenseUrl] = await Promise.all([
+      this.resolveFileUrl(businessAccount.logoFileId),
+      this.resolveFileUrl(businessAccount.licenseFileId),
+    ]);
 
-    return { ...businessAccount, logoUrl };
+    return { ...businessAccount, logoUrl, licenseUrl };
   }
 
   async getMemberRole(userId: number, businessAccountId: number) {
@@ -148,6 +151,7 @@ export class BusinessAccountsService {
     id: number,
     dto: UpdateBusinessAccountDto,
     logo?: Express.Multer.File,
+    license?: Express.Multer.File,
   ) {
     this.assertAnyBusinessPermission(
       user,
@@ -158,8 +162,26 @@ export class BusinessAccountsService {
 
     const name = dto.name ?? current.name;
     const slug = dto.name != null ? generateUniqueSlug(dto.name) : current.slug;
+    const licenseIssuedAt =
+      dto.licenseIssuedAt === undefined
+        ? current.licenseIssuedAt
+        : dto.licenseIssuedAt;
+    const licenseExpiresAt =
+      dto.licenseExpiresAt === undefined
+        ? current.licenseExpiresAt
+        : dto.licenseExpiresAt;
+    if (
+      licenseIssuedAt != null &&
+      licenseExpiresAt != null &&
+      licenseExpiresAt < licenseIssuedAt
+    ) {
+      throw new BadRequestException(
+        "Business license expiry must follow its issue date",
+      );
+    }
 
     let logoFileId = current.logoFileId;
+    let licenseFileId = current.licenseFileId;
 
     let newLogoId: number | undefined;
     if (logo) {
@@ -169,6 +191,18 @@ export class BusinessAccountsService {
           logo.buffer,
           logo.originalname,
           logo.mimetype,
+          user.id,
+        )
+      ).id;
+    }
+    let newLicenseId: number | undefined;
+    if (license) {
+      newLicenseId = (
+        await this.filesService.uploadFromBuffer(
+          "productMedia",
+          license.buffer,
+          license.originalname,
+          license.mimetype,
           user.id,
         )
       ).id;
@@ -187,6 +221,16 @@ export class BusinessAccountsService {
 
           logoFileId = newLogoId!;
         }
+        if (license) {
+          if (current.licenseFileId != null) {
+            await this.filesService
+              .softDelete(current.licenseFileId, tx)
+              .catch(() => {
+                // best effort old license cleanup
+              });
+          }
+          licenseFileId = newLicenseId!;
+        }
 
         return this.businessAccountsRepository.updateBusinessAccountById(
           id,
@@ -194,6 +238,7 @@ export class BusinessAccountsService {
           name,
           slug,
           logoFileId,
+          licenseFileId,
           tx,
         );
       },
@@ -201,7 +246,8 @@ export class BusinessAccountsService {
 
     return {
       ...updated,
-      logoUrl: await this.resolveLogoUrl(updated.logoFileId),
+      logoUrl: await this.resolveFileUrl(updated.logoFileId),
+      licenseUrl: await this.resolveFileUrl(updated.licenseFileId),
     };
   }
 
@@ -620,13 +666,11 @@ export class BusinessAccountsService {
     }
   }
 
-  private async resolveLogoUrl(
-    logoFileId: number | null,
-  ): Promise<string | null> {
-    if (logoFileId == null) {
+  private async resolveFileUrl(fileId: number | null): Promise<string | null> {
+    if (fileId == null) {
       return null;
     }
 
-    return this.filesService.resolveUrl(logoFileId).catch(() => null);
+    return this.filesService.resolveUrl(fileId).catch(() => null);
   }
 }

@@ -1,17 +1,20 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsInt, IsString, MaxLength, MinLength } from "class-validator";
+import { IsIn, IsInt, Min } from "class-validator";
+import {
+  businessMemberRoles,
+  type BusinessMemberRole,
+} from "./update-business-member.dto.js";
 
 export class AddBusinessMemberDto {
   @ApiProperty()
   @IsInt()
+  @Min(1)
   userId!: number;
 
   @ApiProperty({
     description: "Stable role key from roles.name",
-    examples: ["manager", "seller", "collector"],
+    enum: businessMemberRoles,
   })
-  @IsString()
-  @MinLength(2)
-  @MaxLength(100)
-  role!: string;
+  @IsIn(businessMemberRoles)
+  role!: BusinessMemberRole;
 }

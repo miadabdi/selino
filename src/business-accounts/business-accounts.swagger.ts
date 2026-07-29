@@ -16,6 +16,7 @@ import {
   NumericIdParam,
   ProtectedApi,
 } from "../swagger/swagger.decorators";
+import { BusinessAccountProfileDto } from "./dto/business-account-profile.dto.js";
 import { CreateBusinessAccountBody } from "./dto/create-business-account-body.dto";
 import { UpdateBusinessAccountBody } from "./dto/update-business-account-body.dto";
 
@@ -50,7 +51,10 @@ export const GetById = () =>
         "Returns one active business account by ID. Soft-deleted businesses are treated as missing.",
     }),
     businessId(),
-    ApiOkResponse({ description: "The active business account." }),
+    ApiOkResponse({
+      description: "The active business account profile.",
+      type: BusinessAccountProfileDto,
+    }),
     ApiNotFoundResponse({
       description: "The business account does not exist or was deleted.",
       type: ApiErrorResponse,
@@ -68,7 +72,10 @@ export const Update = () =>
     }),
     businessId(),
     ApiBody({ type: UpdateBusinessAccountBody }),
-    ApiOkResponse({ description: "The updated business account." }),
+    ApiOkResponse({
+      description: "The updated business account.",
+      type: BusinessAccountProfileDto,
+    }),
     ApiBadRequestResponse({
       description: "The form fields or logo upload are invalid.",
       type: ApiErrorResponse,
@@ -119,6 +126,56 @@ export const AddMember = () =>
     AuthenticationErrors(),
   );
 
+export const ListMembers = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "List business team members",
+      description:
+        "Returns active memberships with each member's user profile and assigned business role.",
+    }),
+    businessId(),
+    ApiOkResponse({ description: "Business team with user and role details." }),
+    AuthenticationErrors(),
+  );
+
+export const GetMember = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "Get a business team member",
+      description:
+        "Returns one active membership, including the member profile and assigned business role.",
+    }),
+    businessId(),
+    NumericIdParam("userId", "Member user ID"),
+    ApiOkResponse({ description: "Business membership details." }),
+    ApiNotFoundResponse({
+      description: "The business account or member was not found.",
+      type: ApiErrorResponse,
+    }),
+    AuthenticationErrors(),
+  );
+
+export const UpdateMember = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "Update a business team member",
+      description:
+        "Changes a member's business role or active state while preserving at least one active manager.",
+    }),
+    businessId(),
+    NumericIdParam("userId", "Member user ID"),
+    ApiOkResponse({ description: "The updated business membership." }),
+    ApiConflictResponse({
+      description: "The change would remove the last active manager.",
+      type: ApiErrorResponse,
+    }),
+    ApiNotFoundResponse({
+      description: "The business account, member, or role was not found.",
+      type: ApiErrorResponse,
+    }),
+    AuthenticationErrors(),
+  );
+
 export const RemoveMember = () =>
   applyDecorators(
     ApiOperation({
@@ -134,6 +191,94 @@ export const RemoveMember = () =>
     }),
     ApiNotFoundResponse({
       description: "The business account or membership was not found.",
+      type: ApiErrorResponse,
+    }),
+    AuthenticationErrors(),
+  );
+
+export const ListAddresses = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "List business addresses",
+      description:
+        "Returns the business's non-deleted operational addresses and their map coordinates.",
+    }),
+    businessId(),
+    ApiOkResponse({
+      description: "Active and inactive non-deleted addresses.",
+    }),
+    AuthenticationErrors(),
+  );
+
+export const GetAddress = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "Get a business address",
+      description:
+        "Returns one non-deleted address owned by the selected business account.",
+    }),
+    businessId(),
+    NumericIdParam("addressId", "Business address ID"),
+    ApiOkResponse({ description: "Business address details." }),
+    ApiNotFoundResponse({
+      description: "The business account or address was not found.",
+      type: ApiErrorResponse,
+    }),
+    AuthenticationErrors(),
+  );
+
+export const CreateAddress = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "Create a business address",
+      description:
+        "Adds an operational address with validated contact details and optional map coordinates.",
+    }),
+    businessId(),
+    ApiCreatedResponse({ description: "The new business address." }),
+    ApiBadRequestResponse({
+      description: "Coordinates or address fields are invalid.",
+      type: ApiErrorResponse,
+    }),
+    AuthenticationErrors(),
+  );
+
+export const UpdateAddress = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "Update a business address",
+      description:
+        "Updates supplied fields on an existing non-deleted business address.",
+    }),
+    businessId(),
+    NumericIdParam("addressId", "Business address ID"),
+    ApiOkResponse({ description: "The updated business address." }),
+    ApiBadRequestResponse({
+      description: "Coordinates or address fields are invalid.",
+      type: ApiErrorResponse,
+    }),
+    ApiNotFoundResponse({
+      description: "The business account or address was not found.",
+      type: ApiErrorResponse,
+    }),
+    AuthenticationErrors(),
+  );
+
+export const RemoveAddress = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "Remove a business address",
+      description:
+        "Soft-deletes an address owned by the selected business account.",
+    }),
+    businessId(),
+    NumericIdParam("addressId", "Business address ID"),
+    ApiOkResponse({
+      description: "The business address was soft-deleted.",
+      type: MessageResponse,
+    }),
+    ApiNotFoundResponse({
+      description: "The business account or address was not found.",
       type: ApiErrorResponse,
     }),
     AuthenticationErrors(),

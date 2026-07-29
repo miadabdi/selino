@@ -17,6 +17,14 @@ import { StorageModule } from "./storage/storage.module";
 import { BusinessAccountsModule } from "./business-accounts/business-accounts.module";
 import { TradeNetworkModule } from "./trade-network/trade-network.module";
 import { UsersModule } from "./users/users.module";
+import { DashboardModule } from "./dashboard/dashboard.module";
+import { WalletsModule } from "./wallets/wallets.module";
+import { PaymentsModule } from "./payments/payments.module";
+import { OrdersModule } from "./orders/orders.module";
+import { ShipmentsModule } from "./shipments/shipments.module";
+import { SuppliersModule } from "./suppliers/suppliers.module";
+import { ReportsModule } from "./reports/reports.module";
+import { SupportModule } from "./support/support.module";
 
 @Module({
   imports: [
@@ -39,6 +47,14 @@ import { UsersModule } from "./users/users.module";
     InvoicesModule,
     PurchaseRequestsModule,
     TradeNetworkModule,
+    DashboardModule,
+    WalletsModule,
+    PaymentsModule,
+    OrdersModule,
+    ShipmentsModule,
+    SuppliersModule,
+    ReportsModule,
+    SupportModule,
   ],
   controllers: [AppController],
   providers: [AppService],

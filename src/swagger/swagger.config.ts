@@ -51,5 +51,15 @@ export function createSwaggerConfig() {
       "Trade Network",
       "Discover suppliers and manage credit agreements, approvals, and settlements.",
     )
+    .addTag("Invoices", "Read, export, and advance invoice lifecycles.")
+    .addTag("Dashboard", "Business KPI and trend aggregates.")
+    .addTag("Wallets", "Business balances and wallet ledger transactions.")
+    .addTag("Payments", "Provider-neutral payment and refund workflows.")
+    .addTag("Orders", "Order lifecycle and fulfillment status.")
+    .addTag("Shipments", "Shipment details, locations, delays, and delivery.")
+    .addTag("Suppliers", "Supplier onboarding and business relationships.")
+    .addTag("Reports", "Performance reporting and exports.")
+    .addTag("Notifications", "Notification inbox and delivery preferences.")
+    .addTag("Support", "Support tickets, messages, and resolution.")
     .build();
 }

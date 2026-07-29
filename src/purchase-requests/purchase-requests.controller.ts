@@ -86,6 +86,16 @@ export class PurchaseRequestsController {
   }
 
   @RequireAnyPermission(
+    "seller.purchase-requests.read.own",
+    "seller.purchase-requests.read.all",
+  )
+  @Get(":id")
+  @Swagger.GetById()
+  get(@Req() req: Request, @Param("id", ParseIntPipe) id: number) {
+    return this.purchaseRequestsService.get(req.user as AuthenticatedUser, id);
+  }
+
+  @RequireAnyPermission(
     "seller.purchase-requests.confirm.own",
     "seller.purchase-requests.confirm.all",
   )

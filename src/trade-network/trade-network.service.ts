@@ -8,6 +8,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { NotificationChannel } from "../notification/notification.enums";
 import { NotificationService } from "../notification/notification.service";
+import { OrdersRepository } from "../orders/orders.repository";
 import type { AuthenticatedUser } from "../auth/interfaces/index";
 import {
   assertBusinessPermission,
@@ -23,6 +24,10 @@ import type { CreateTradeCreditAgreementDto } from "./dto/create-trade-credit-ag
 import type { RejectOverLimitTradeDto } from "./dto/reject-over-limit-trade.dto";
 import type { SearchTradeOffersQueryDto } from "./dto/search-trade-offers-query.dto";
 import type { SuspendTradeCreditAgreementDto } from "./dto/suspend-trade-credit-agreement.dto";
+import type { AdjustCreditLimitDto } from "./dto/adjust-credit-limit.dto";
+import type { ListCreditTransactionsQueryDto } from "./dto/list-credit-transactions-query.dto";
+import type { ListTradeCreditAgreementsQueryDto } from "./dto/list-trade-credit-agreements-query.dto";
+import type { UpdateTradeCreditAgreementDto } from "./dto/update-trade-credit-agreement.dto";
 import { TradeNetworkRepository } from "./trade-network.repository";
 
 @Injectable()
@@ -39,6 +44,7 @@ export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
     private readonly storeInventoryTransactionsRepository: StoreInventoryTransactionsRepository,
     configService: ConfigService,
     private readonly notificationService: NotificationService,
+    private readonly ordersRepository: OrdersRepository,
   ) {
     this.approvalExpiryMinutes = configService.getOrThrow<number>(
       "CREDIT_APPROVAL_EXPIRY_MINUTES",
@@ -82,6 +88,180 @@ export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
     return businessAccountId;
   }
 
+  private assertAgreementParty(
+    user: AuthenticatedUser,
+    agreement: {
+      buyerBusinessAccountId: number;
+      supplierBusinessAccountId: number;
+    },
+    permission: string,
+  ) {
+    if (user.isAdmin === true || user.permissions.includes("*")) {
+      return agreement.buyerBusinessAccountId;
+    }
+    const membership = user.businessMemberships.find(
+      (item) =>
+        item.isActive &&
+        item.permissions.includes(permission) &&
+        (item.businessAccountId === agreement.buyerBusinessAccountId ||
+          item.businessAccountId === agreement.supplierBusinessAccountId),
+    );
+    if (!membership) {
+      throwHttpError(
+        HttpStatus.FORBIDDEN,
+        "Agreement party permission is required",
+      );
+    }
+    return membership.businessAccountId;
+  }
+
+  listAgreements(
+    user: AuthenticatedUser,
+    query: ListTradeCreditAgreementsQueryDto,
+  ) {
+    assertBusinessPermission(
+      user,
+      query.businessAccountId,
+      "manager.agreements.read",
+    );
+    return this.repository.listAgreements(query);
+  }
+
+  async getAgreement(user: AuthenticatedUser, agreementId: number) {
+    const agreement = await this.repository.findAgreementDetails(agreementId);
+    if (!agreement) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
+    }
+    this.assertAgreementParty(user, agreement, "manager.agreements.read");
+    return {
+      ...agreement,
+      availableCredit: Math.max(
+        0,
+        agreement.creditLimit - agreement.usedCredit,
+      ),
+    };
+  }
+
+  async updateAgreement(
+    user: AuthenticatedUser,
+    agreementId: number,
+    dto: UpdateTradeCreditAgreementDto,
+  ) {
+    const agreement = await this.repository.findAgreementById(agreementId);
+    if (!agreement) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
+    }
+    const actorBusinessAccountId = this.assertAgreementParty(
+      user,
+      agreement,
+      "manager.agreements.update",
+    );
+    if (
+      dto.startsAt != null &&
+      dto.endsAt != null &&
+      new Date(dto.endsAt) <= new Date(dto.startsAt)
+    ) {
+      throwHttpError(HttpStatus.BAD_REQUEST, "Agreement end must follow start");
+    }
+    return this.repository.transaction(async (tx) => {
+      const updated = await this.repository.updateAgreement(
+        agreementId,
+        dto,
+        tx,
+      );
+      await this.repository.createAuditLog(
+        {
+          agreementId,
+          action: "updated",
+          actorUserId: user.id,
+          actorBusinessAccountId,
+          before: agreement,
+          after: updated,
+        },
+        tx,
+      );
+      return updated;
+    });
+  }
+
+  async adjustCreditLimit(
+    user: AuthenticatedUser,
+    agreementId: number,
+    dto: AdjustCreditLimitDto,
+  ) {
+    const agreement = await this.repository.findAgreementById(agreementId);
+    if (!agreement) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
+    }
+    const actorBusinessAccountId = this.assertAgreementParty(
+      user,
+      agreement,
+      "manager.credit.manage",
+    );
+    const delta = dto.direction === "increase" ? dto.amount : -dto.amount;
+    const nextLimit = agreement.creditLimit + delta;
+    if (nextLimit < agreement.usedCredit || nextLimit < 0) {
+      throwHttpError(
+        HttpStatus.CONFLICT,
+        "Credit limit cannot be lower than current debt",
+      );
+    }
+    return this.repository.transaction(async (tx) => {
+      const updated = await this.repository.setCreditLimit(
+        agreementId,
+        nextLimit,
+        tx,
+      );
+      const transaction = await this.repository.createTransaction(
+        {
+          agreementId,
+          type: "adjustment",
+          amount: delta,
+          currency: agreement.currency,
+          referenceType: "credit_limit",
+          referenceId: agreementId,
+          description: dto.reason ?? "Credit limit adjusted",
+          metadata: {
+            previousCreditLimit: agreement.creditLimit,
+            nextCreditLimit: nextLimit,
+          },
+          createdBy: user.id,
+        },
+        tx,
+      );
+      await this.repository.createAuditLog(
+        {
+          agreementId,
+          action: "updated",
+          actorUserId: user.id,
+          actorBusinessAccountId,
+          before: { creditLimit: agreement.creditLimit },
+          after: { creditLimit: nextLimit, transactionId: transaction.id },
+          metadata: { reason: dto.reason ?? null },
+        },
+        tx,
+      );
+      return {
+        agreement: updated,
+        transaction,
+        availableCredit: Math.max(0, nextLimit - agreement.usedCredit),
+      };
+    });
+  }
+
+  async listCreditTransactions(
+    user: AuthenticatedUser,
+    agreementId: number,
+    query: ListCreditTransactionsQueryDto,
+  ) {
+    const agreement = await this.repository.findAgreementById(agreementId);
+    if (!agreement) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
+    }
+    this.assertAgreementParty(user, agreement, "manager.credit.read");
+    return this.repository.listCreditTransactions(agreementId, query);
+  }
+
   async searchOffers(
     user: AuthenticatedUser,
     query: SearchTradeOffersQueryDto,
@@ -92,6 +272,21 @@ export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
     );
 
     return this.repository.searchOffers(buyerBusinessAccountId, query);
+  }
+
+  async getOffer(user: AuthenticatedUser, storeInventoryId: number) {
+    const buyerBusinessAccountId = this.resolveBuyerBusinessAccountId(
+      user,
+      "seller.inventory.read",
+    );
+    const offer = await this.repository.findOfferById(
+      buyerBusinessAccountId,
+      storeInventoryId,
+    );
+    if (!offer) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Trade offer not found");
+    }
+    return offer;
   }
 
   async createAgreement(
@@ -546,7 +741,18 @@ export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
         "pending",
         tx,
       );
-      return { approvalRequest: approved, invoice: activeInvoice };
+      const order = await this.ordersRepository.createFromInvoice(
+        activeInvoice,
+        user.id,
+        tx,
+      );
+      if (!order) {
+        throwHttpError(
+          HttpStatus.CONFLICT,
+          "Order could not be derived from approved invoice",
+        );
+      }
+      return { approvalRequest: approved, invoice: activeInvoice, order };
     });
     await this.notifyActivatedInvoice(result.invoice);
     return result;

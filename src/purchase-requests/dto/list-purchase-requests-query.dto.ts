@@ -1,6 +1,14 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { IsInt, IsOptional, Max, Min } from "class-validator";
+import {
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from "class-validator";
 
 export class ListPurchaseRequestsQueryDto {
   @ApiPropertyOptional({
@@ -12,6 +20,39 @@ export class ListPurchaseRequestsQueryDto {
   @Min(1)
   @IsOptional()
   buyerBusinessAccountId?: number;
+
+  @ApiPropertyOptional({
+    enum: [
+      "new",
+      "pending_credit_approval",
+      "confirmed",
+      "cancelled",
+      "expired",
+    ],
+  })
+  @IsIn(["new", "pending_credit_approval", "confirmed", "cancelled", "expired"])
+  @IsOptional()
+  status?:
+    | "new"
+    | "pending_credit_approval"
+    | "confirmed"
+    | "cancelled"
+    | "expired";
+
+  @ApiPropertyOptional({ description: "Search by request code or notes." })
+  @IsString()
+  @IsOptional()
+  search?: string;
+
+  @ApiPropertyOptional({ format: "date-time" })
+  @IsDateString()
+  @IsOptional()
+  from?: string;
+
+  @ApiPropertyOptional({ format: "date-time" })
+  @IsDateString()
+  @IsOptional()
+  to?: string;
 
   @ApiPropertyOptional({ default: 1 })
   @Type(() => Number)

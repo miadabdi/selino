@@ -19,6 +19,7 @@ import { TradeNetworkService } from "../trade-network/trade-network.service";
 import type { Invoice } from "../database/schema/index";
 import { NotificationService } from "../notification/notification.service";
 import { NotificationChannel } from "../notification/notification.enums";
+import { OrdersRepository } from "../orders/orders.repository";
 import { AddPurchaseRequestItemDto } from "./dto/add-purchase-request-item.dto";
 import type { ListPurchaseRequestsQueryDto } from "./dto/list-purchase-requests-query.dto";
 import { PurchaseRequestsRepository } from "./purchase-requests.repository";
@@ -38,6 +39,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     private readonly configService: ConfigService,
     private readonly tradeNetworkService: TradeNetworkService,
     private readonly notificationService: NotificationService,
+    private readonly ordersRepository: OrdersRepository,
   ) {
     this.requestExpiryCheckIntervalMs = this.configService.getOrThrow<number>(
       "PURCHASE_REQUEST_EXPIRY_CHECK_INTERVAL_MS",
@@ -335,6 +337,14 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
           item.purchaseRequestId,
           tx,
         );
+        await this.purchaseRequestsRepository.recordStatusEvent(
+          item.purchaseRequestId,
+          "new",
+          "cancelled",
+          user.id,
+          "All request items were removed",
+          tx,
+        );
       } else {
         await this.purchaseRequestsRepository.recalculateTotal(
           item.purchaseRequestId,
@@ -365,17 +375,50 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
 
   async list(user: AuthenticatedUser, query: ListPurchaseRequestsQueryDto) {
     const scope = this.resolveListScope(user, query.buyerBusinessAccountId);
-    const result = await this.purchaseRequestsRepository.listByBuyerBusiness(
-      scope.buyerBusinessAccountId,
-      query.page,
-      query.limit,
-      scope.requesterId,
-    );
+    const hasFilters =
+      query.status != null ||
+      query.search != null ||
+      query.from != null ||
+      query.to != null;
+    const result = hasFilters
+      ? await this.purchaseRequestsRepository.listByBuyerBusiness(
+          scope.buyerBusinessAccountId,
+          query.page,
+          query.limit,
+          scope.requesterId,
+          {
+            status: query.status,
+            search: query.search,
+            from: query.from,
+            to: query.to,
+          },
+        )
+      : await this.purchaseRequestsRepository.listByBuyerBusiness(
+          scope.buyerBusinessAccountId,
+          query.page,
+          query.limit,
+          scope.requesterId,
+        );
 
     return {
       ...result,
       items: result.items.map((item) => withIsOwn(item, user.id)),
     };
+  }
+
+  async get(user: AuthenticatedUser, id: number) {
+    const request = await this.purchaseRequestsRepository.findDetailedById(id);
+    if (!request) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");
+    }
+    this.resolvePurchaseRequestScope(
+      user,
+      request.buyerBusinessAccountId,
+      request.requesterId,
+      "seller.purchase-requests.read.own",
+      "seller.purchase-requests.read.all",
+    );
+    return withIsOwn(request, user.id);
   }
 
   async confirm(user: AuthenticatedUser, id: number) {
@@ -418,14 +461,26 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
         }
 
         if (lockedRequest.status === "confirmed") {
+          const invoices =
+            await this.purchaseRequestsRepository.listInvoicesByPurchaseRequestId(
+              lockedRequest.id,
+              tx,
+            );
+          for (const invoice of invoices) {
+            if (
+              ["pending", "sent", "delivered", "paid"].includes(invoice.status)
+            ) {
+              await this.ordersRepository.createFromInvoice(
+                invoice,
+                user.id,
+                tx,
+              );
+            }
+          }
           return {
             purchaseRequestId: lockedRequest.id,
             status: lockedRequest.status,
-            invoices:
-              await this.purchaseRequestsRepository.listInvoicesByPurchaseRequestId(
-                lockedRequest.id,
-                tx,
-              ),
+            invoices,
             notifySuppliers: false,
           };
         }
@@ -557,11 +612,27 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
             invoice.id,
             tx,
           );
+          const order = await this.ordersRepository.createFromInvoice(
+            invoice,
+            user.id,
+            tx,
+          );
+          if (!order) {
+            throwHttpError(HttpStatus.CONFLICT, "Order could not be created");
+          }
           createdInvoices.push(invoice);
         }
 
         await this.purchaseRequestsRepository.setRequestConfirmed(
           lockedRequest.id,
+          tx,
+        );
+        await this.purchaseRequestsRepository.recordStatusEvent(
+          lockedRequest.id,
+          lockedRequest.status,
+          "confirmed",
+          user.id,
+          null,
           tx,
         );
 
@@ -679,6 +750,14 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       }
 
       await this.purchaseRequestsRepository.setRequestCancelled(request.id, tx);
+      await this.purchaseRequestsRepository.recordStatusEvent(
+        request.id,
+        request.status,
+        "cancelled",
+        user.id,
+        null,
+        tx,
+      );
 
       return { message: "Purchase request cancelled" };
     });
@@ -736,6 +815,14 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
 
           await this.purchaseRequestsRepository.setRequestExpired(
             activeRequest.id,
+            tx,
+          );
+          await this.purchaseRequestsRepository.recordStatusEvent(
+            activeRequest.id,
+            "new",
+            "expired",
+            null,
+            "Request expired",
             tx,
           );
         });

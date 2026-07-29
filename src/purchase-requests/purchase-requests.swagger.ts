@@ -91,6 +91,22 @@ export const List = () =>
     AuthenticationErrors(),
   );
 
+export const GetById = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "Get a purchase request",
+      description:
+        "Returns request items, supplier offers, generated invoices, and credit approval information within the caller's own/all permission scope.",
+    }),
+    requestId(),
+    ApiOkResponse({ description: "Purchase request details." }),
+    ApiNotFoundResponse({
+      description: "The purchase request does not exist.",
+      type: ApiErrorResponse,
+    }),
+    AuthenticationErrors(),
+  );
+
 export const Confirm = () =>
   applyDecorators(
     ApiOperation({

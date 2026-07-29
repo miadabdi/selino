@@ -83,6 +83,7 @@ describe("PurchaseRequestsService confirmation", () => {
       }),
       setRequestConfirmed: jest.fn(),
       listActiveSellerRecipients: jest.fn().mockResolvedValue([]),
+      recordStatusEvent: jest.fn(),
     };
     const inventories = {
       consumeReservedStock: jest.fn().mockResolvedValue([{ id: 21 }]),
@@ -98,6 +99,9 @@ describe("PurchaseRequestsService confirmation", () => {
         }),
       recordCreditPurchase: jest.fn(),
     };
+    const orders = {
+      createFromInvoice: jest.fn().mockResolvedValue({ id: 91 }),
+    };
     const service = new PurchaseRequestsService(
       repository as never,
       inventories as never,
@@ -108,6 +112,7 @@ describe("PurchaseRequestsService confirmation", () => {
       } as never,
       tradeNetwork as never,
       { send: jest.fn() } as never,
+      orders as never,
     );
     const user = {
       id: 10,
@@ -142,7 +147,84 @@ describe("PurchaseRequestsService confirmation", () => {
       "pending_credit_approval",
       {},
     );
+    expect(orders.createFromInvoice).toHaveBeenCalledTimes(1);
+    expect(orders.createFromInvoice).toHaveBeenCalledWith(invoices[0], 10, {});
     expect(repository.setRequestConfirmed).toHaveBeenCalledWith(50, {});
+  });
+
+  it("idempotently creates an order after credit approval activates an invoice", async () => {
+    const request = {
+      id: 50,
+      requesterId: 10,
+      buyerBusinessAccountId: 100,
+      status: "confirmed" as const,
+      expiresAt: new Date(),
+    };
+    const invoices = [
+      {
+        id: 1,
+        buyerBusinessAccountId: 100,
+        supplierBusinessAccountId: 200,
+        buyerId: 10,
+        purchaseRequestId: 50,
+        status: "pending" as const,
+        totalAmount: 100,
+        currency: "IRR",
+      },
+      {
+        id: 2,
+        buyerBusinessAccountId: 100,
+        supplierBusinessAccountId: 300,
+        buyerId: 10,
+        purchaseRequestId: 50,
+        status: "pending_credit_approval" as const,
+        totalAmount: 200,
+        currency: "IRR",
+      },
+    ];
+    const repository = {
+      findById: jest.fn().mockResolvedValue(request),
+      transaction: jest.fn((callback: (tx: object) => unknown) => callback({})),
+      findByIdForUpdate: jest.fn().mockResolvedValue(request),
+      listInvoicesByPurchaseRequestId: jest.fn().mockResolvedValue(invoices),
+    };
+    const orders = {
+      createFromInvoice: jest.fn().mockResolvedValue({ id: 91 }),
+    };
+    const service = new PurchaseRequestsService(
+      repository as never,
+      {} as never,
+      {} as never,
+      {
+        getOrThrow: (key: string) =>
+          key === "PURCHASE_REQUEST_ACTIVE_WINDOW_MINUTES" ? 15 : 60_000,
+      } as never,
+      {} as never,
+      {} as never,
+      orders as never,
+    );
+    const user = {
+      id: 10,
+      isAdmin: false,
+      permissions: ["seller.purchase-requests.confirm.own"],
+      businessMemberships: [
+        {
+          id: 1,
+          businessAccountId: 100,
+          businessName: "Buyer",
+          role: "seller",
+          permissions: ["seller.purchase-requests.confirm.own"],
+          isActive: true,
+        },
+      ],
+    } as AuthenticatedUser;
+
+    await expect(service.confirm(user, 50)).resolves.toMatchObject({
+      status: "confirmed",
+      invoices,
+    });
+    expect(orders.createFromInvoice).toHaveBeenCalledTimes(1);
+    expect(orders.createFromInvoice).toHaveBeenCalledWith(invoices[0], 10, {});
   });
 });
 
@@ -315,6 +397,7 @@ describe("PurchaseRequestsService store-scoped mutations", () => {
       listItemsByRequestId: jest.fn().mockResolvedValue([]),
       transaction: jest.fn((callback: (tx: object) => unknown) => callback({})),
       setRequestCancelled: jest.fn(),
+      recordStatusEvent: jest.fn(),
     };
     const service = new PurchaseRequestsService(
       repository as never,

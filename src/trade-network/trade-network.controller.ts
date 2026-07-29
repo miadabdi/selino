@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -20,6 +21,10 @@ import { RejectOverLimitTradeDto } from "./dto/reject-over-limit-trade.dto";
 import { ListCreditApprovalRequestsQueryDto } from "./dto/list-credit-approval-requests-query.dto";
 import { SearchTradeOffersQueryDto } from "./dto/search-trade-offers-query.dto";
 import { SuspendTradeCreditAgreementDto } from "./dto/suspend-trade-credit-agreement.dto";
+import { AdjustCreditLimitDto } from "./dto/adjust-credit-limit.dto";
+import { ListCreditTransactionsQueryDto } from "./dto/list-credit-transactions-query.dto";
+import { ListTradeCreditAgreementsQueryDto } from "./dto/list-trade-credit-agreements-query.dto";
+import { UpdateTradeCreditAgreementDto } from "./dto/update-trade-credit-agreement.dto";
 import { TradeNetworkService } from "./trade-network.service";
 import * as Swagger from "./trade-network.swagger";
 
@@ -37,6 +42,13 @@ export class TradeNetworkController {
     return this.tradeNetworkService.searchOffers(user, query);
   }
 
+  @RequirePermissions("seller.inventory.read")
+  @Get("offers/:id")
+  @Swagger.GetOffer()
+  getOffer(@Req() req: Request, @Param("id", ParseIntPipe) id: number) {
+    return this.tradeNetworkService.getOffer(req.user as AuthenticatedUser, id);
+  }
+
   @RequirePermissions("manager.agreements.create")
   @Post("credit-agreements")
   @Swagger.CreateAgreement()
@@ -46,6 +58,74 @@ export class TradeNetworkController {
   ) {
     const user = req.user as AuthenticatedUser;
     return this.tradeNetworkService.createAgreement(user, dto);
+  }
+
+  @RequirePermissions("manager.agreements.read")
+  @Get("credit-agreements")
+  @Swagger.ListAgreements()
+  listAgreements(
+    @Req() req: Request,
+    @Query() query: ListTradeCreditAgreementsQueryDto,
+  ) {
+    return this.tradeNetworkService.listAgreements(
+      req.user as AuthenticatedUser,
+      query,
+    );
+  }
+
+  @RequirePermissions("manager.agreements.read")
+  @Get("credit-agreements/:id")
+  @Swagger.GetAgreement()
+  getAgreement(@Req() req: Request, @Param("id", ParseIntPipe) id: number) {
+    return this.tradeNetworkService.getAgreement(
+      req.user as AuthenticatedUser,
+      id,
+    );
+  }
+
+  @RequirePermissions("manager.agreements.update")
+  @Patch("credit-agreements/:id")
+  @Swagger.UpdateAgreement()
+  updateAgreement(
+    @Req() req: Request,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UpdateTradeCreditAgreementDto,
+  ) {
+    return this.tradeNetworkService.updateAgreement(
+      req.user as AuthenticatedUser,
+      id,
+      dto,
+    );
+  }
+
+  @RequirePermissions("manager.credit.manage")
+  @Post("credit-agreements/:id/limit-adjustments")
+  @Swagger.AdjustCreditLimit()
+  adjustCreditLimit(
+    @Req() req: Request,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: AdjustCreditLimitDto,
+  ) {
+    return this.tradeNetworkService.adjustCreditLimit(
+      req.user as AuthenticatedUser,
+      id,
+      dto,
+    );
+  }
+
+  @RequirePermissions("manager.credit.read")
+  @Get("credit-agreements/:id/transactions")
+  @Swagger.ListCreditTransactions()
+  listCreditTransactions(
+    @Req() req: Request,
+    @Param("id", ParseIntPipe) id: number,
+    @Query() query: ListCreditTransactionsQueryDto,
+  ) {
+    return this.tradeNetworkService.listCreditTransactions(
+      req.user as AuthenticatedUser,
+      id,
+      query,
+    );
   }
 
   @RequirePermissions("manager.agreements.sign")

@@ -32,6 +32,22 @@ export const SearchOffers = () =>
     AuthenticationErrors(),
   );
 
+export const GetOffer = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "Get a supplier offer",
+      description:
+        "Returns a visible offer with product, supplier, stock, pricing, and active credit-contract context for the caller's buyer business.",
+    }),
+    NumericIdParam("id", "Store inventory offer ID"),
+    ApiOkResponse({ description: "Supplier offer details." }),
+    ApiNotFoundResponse({
+      description: "The offer is unavailable or belongs to the buyer.",
+      type: ApiErrorResponse,
+    }),
+    AuthenticationErrors(),
+  );
+
 export const CreateAgreement = () =>
   applyDecorators(
     ApiOperation({
@@ -44,6 +60,75 @@ export const CreateAgreement = () =>
       description: "The buyer and supplier are the same or a field is invalid.",
       type: ApiErrorResponse,
     }),
+    AuthenticationErrors(),
+  );
+
+export const ListAgreements = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "List trade credit agreements",
+      description:
+        "Returns paginated buyer or supplier agreements for the selected business, including available credit.",
+    }),
+    ApiOkResponse({ description: "Paginated credit agreements." }),
+    AuthenticationErrors(),
+  );
+
+export const GetAgreement = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "Get trade credit agreement details",
+      description:
+        "Returns parties, signatures, transactions, settlements, approvals, audit history, and available credit.",
+    }),
+    agreementId(),
+    ApiOkResponse({ description: "Credit agreement details." }),
+    ApiNotFoundResponse({
+      description: "The trade credit agreement does not exist.",
+      type: ApiErrorResponse,
+    }),
+    AuthenticationErrors(),
+  );
+
+export const UpdateAgreement = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "Update trade credit agreement terms",
+      description:
+        "Updates mutable settlement terms on an agreement visible to the selected party.",
+    }),
+    agreementId(),
+    ApiOkResponse({ description: "The updated agreement." }),
+    AuthenticationErrors(),
+  );
+
+export const AdjustCreditLimit = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "Increase or decrease a credit limit",
+      description:
+        "Changes the limit without allowing it below current debt and records a ledger transaction and audit event.",
+    }),
+    agreementId(),
+    ApiCreatedResponse({
+      description: "Updated agreement and adjustment transaction.",
+    }),
+    ApiConflictResponse({
+      description: "The requested limit would be below current debt.",
+      type: ApiErrorResponse,
+    }),
+    AuthenticationErrors(),
+  );
+
+export const ListCreditTransactions = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "List credit ledger transactions",
+      description:
+        "Returns a paginated, newest-first ledger for the selected credit agreement.",
+    }),
+    agreementId(),
+    ApiOkResponse({ description: "Paginated credit transactions." }),
     AuthenticationErrors(),
   );
 

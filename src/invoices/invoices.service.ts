@@ -3,18 +3,21 @@ import type { AuthenticatedUser } from "../auth/interfaces/index";
 import { throwHttpError } from "../common/http-error";
 import type { ExportInvoicesDto } from "./dto/export-invoices.dto";
 import type { ListInvoicesQueryDto } from "./dto/list-invoices-query.dto";
+import type { UpdateInvoiceStatusDto } from "./dto/update-invoice-status.dto";
 import { InvoiceExportService } from "./invoice-export.service";
 import { InvoicesRepository } from "./invoices.repository";
+import { OrdersRepository } from "../orders/orders.repository";
 
 @Injectable()
 export class InvoicesService {
   constructor(
     private readonly repository: InvoicesRepository,
     private readonly invoiceExportService: InvoiceExportService,
+    private readonly ordersRepository: OrdersRepository,
   ) {}
 
   private getMembership(user: AuthenticatedUser, businessAccountId: number) {
-    if (user.isAdmin === true) return null;
+    if (user.isAdmin === true || user.permissions.includes("*")) return null;
     const membership = user.businessMemberships.find(
       (item) => item.isActive && item.businessAccountId === businessAccountId,
     );
@@ -24,19 +27,32 @@ export class InvoicesService {
     return membership;
   }
 
-  private assertPermission(
+  private resolveReadScope(
     user: AuthenticatedUser,
     businessAccountId: number,
-    permissions: string[],
+    view: "active" | "history",
   ) {
     const membership = this.getMembership(user, businessAccountId);
-    if (
-      membership &&
-      !membership.permissions.includes("*") &&
-      !permissions.some((permission) =>
-        membership.permissions.includes(permission),
-      )
-    ) {
+    if (membership == null || membership.permissions.includes("*")) {
+      return { requesterId: undefined };
+    }
+
+    const prefix = `seller.invoices.${view}.read`;
+    if (membership.permissions.includes(`${prefix}.all`)) {
+      return { requesterId: undefined };
+    }
+    if (membership.permissions.includes(`${prefix}.own`)) {
+      return { requesterId: user.id };
+    }
+
+    throwHttpError(HttpStatus.FORBIDDEN, "Invoice read permission is required");
+  }
+
+  private assertInvoiceWithinScope(
+    invoice: { buyerId: number },
+    scope: { requesterId?: number },
+  ) {
+    if (scope.requesterId != null && invoice.buyerId !== scope.requesterId) {
       throwHttpError(
         HttpStatus.FORBIDDEN,
         "Invoice read permission is required",
@@ -49,12 +65,12 @@ export class InvoicesService {
     businessAccountId: number,
     query: ListInvoicesQueryDto,
   ) {
-    this.assertPermission(user, businessAccountId, [
-      query.view === "active"
-        ? "seller.invoices.active.read"
-        : "seller.invoices.history.read",
-    ]);
-    return this.repository.listForBusiness(businessAccountId, query);
+    const scope = this.resolveReadScope(user, businessAccountId, query.view);
+    return this.repository.listForBusiness(
+      businessAccountId,
+      query,
+      scope.requesterId,
+    );
   }
 
   async get(user: AuthenticatedUser, businessAccountId: number, id: number) {
@@ -83,9 +99,12 @@ export class InvoicesService {
             invoice.status,
           )
         : ["pending", "sent"].includes(invoice.status);
-    this.assertPermission(user, businessAccountId, [
-      isActive ? "seller.invoices.active.read" : "seller.invoices.history.read",
-    ]);
+    const scope = this.resolveReadScope(
+      user,
+      businessAccountId,
+      isActive ? "active" : "history",
+    );
+    this.assertInvoiceWithinScope(invoice, scope);
 
     return invoice;
   }
@@ -95,14 +114,11 @@ export class InvoicesService {
     businessAccountId: number,
     dto: ExportInvoicesDto,
   ) {
-    this.assertPermission(user, businessAccountId, [
-      dto.view === "active"
-        ? "seller.invoices.active.read"
-        : "seller.invoices.history.read",
-    ]);
+    const scope = this.resolveReadScope(user, businessAccountId, dto.view);
     const selectedInvoices = await this.repository.findManyForExport(
       businessAccountId,
       dto,
+      scope.requesterId,
     );
     if (selectedInvoices.length !== dto.invoiceIds.length) {
       throwHttpError(
@@ -118,5 +134,81 @@ export class InvoicesService {
       buffer,
       filename: `invoices-${dto.direction}-${dto.view}-${date}.xlsx`,
     };
+  }
+
+  async updateStatus(
+    user: AuthenticatedUser,
+    businessAccountId: number,
+    invoiceId: number,
+    dto: UpdateInvoiceStatusDto,
+  ) {
+    const membership = this.getMembership(user, businessAccountId);
+    if (
+      membership &&
+      !membership.permissions.includes("*") &&
+      !membership.permissions.includes("manager.orders.manage")
+    ) {
+      throwHttpError(
+        HttpStatus.FORBIDDEN,
+        "Order management permission is required",
+      );
+    }
+    const invoice = await this.repository.findForBusiness(
+      businessAccountId,
+      invoiceId,
+    );
+    if (!invoice) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Invoice not found");
+    }
+    const transitions: Record<
+      "pending" | "sent",
+      Array<UpdateInvoiceStatusDto["status"]>
+    > = {
+      pending: ["sent", "cancelled"],
+      sent: ["delivered", "cancelled"],
+    };
+    if (
+      !(invoice.status in transitions) ||
+      !transitions[invoice.status as "pending" | "sent"].includes(dto.status)
+    ) {
+      throwHttpError(HttpStatus.CONFLICT, "Invalid invoice status transition");
+    }
+    const updated = await this.repository.transaction(async (tx) => {
+      const order =
+        invoice.order ??
+        (await this.ordersRepository.createFromInvoice(invoice, user.id, tx));
+      if (!order) {
+        throwHttpError(HttpStatus.CONFLICT, "Order could not be created");
+      }
+      const synchronizedOrder =
+        await this.ordersRepository.synchronizeOrderForInvoiceStatus(
+          invoice.id,
+          dto.status,
+          user.id,
+          dto.reason,
+          tx,
+        );
+      if (!synchronizedOrder) {
+        throwHttpError(
+          HttpStatus.CONFLICT,
+          "Invoice status conflicts with the order lifecycle",
+        );
+      }
+      return this.repository.transitionStatus(
+        invoiceId,
+        invoice.status as "pending" | "sent",
+        dto.status,
+        user.id,
+        dto.reason ?? null,
+        tx,
+      );
+    });
+    if (!updated) {
+      throwHttpError(
+        HttpStatus.CONFLICT,
+        "Invoice status changed concurrently",
+      );
+    }
+    return updated;
   }
 }

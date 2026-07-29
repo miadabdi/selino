@@ -1,6 +1,14 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { IsIn, IsInt, IsOptional, Max, Min } from "class-validator";
+import {
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  Max,
+  Min,
+} from "class-validator";
 
 export class ListInvoicesQueryDto {
   @ApiPropertyOptional({ enum: ["purchase", "sale"], default: "purchase" })
@@ -10,6 +18,70 @@ export class ListInvoicesQueryDto {
   @ApiPropertyOptional({ enum: ["active", "history"], default: "active" })
   @IsIn(["active", "history"])
   view: "active" | "history" = "active";
+
+  @ApiPropertyOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  supplierBusinessAccountId?: number;
+
+  @ApiPropertyOptional({
+    enum: [
+      "pending_credit_approval",
+      "pending",
+      "sent",
+      "delivered",
+      "paid",
+      "rejected",
+      "expired",
+      "cancelled",
+    ],
+  })
+  @IsIn([
+    "pending_credit_approval",
+    "pending",
+    "sent",
+    "delivered",
+    "paid",
+    "rejected",
+    "expired",
+    "cancelled",
+  ])
+  @IsOptional()
+  status?:
+    | "pending_credit_approval"
+    | "pending"
+    | "sent"
+    | "delivered"
+    | "paid"
+    | "rejected"
+    | "expired"
+    | "cancelled";
+
+  @ApiPropertyOptional({ format: "date-time" })
+  @IsDateString()
+  @IsOptional()
+  from?: string;
+
+  @ApiPropertyOptional({ format: "date-time" })
+  @IsDateString()
+  @IsOptional()
+  to?: string;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  minAmount?: number;
+
+  @ApiPropertyOptional({ minimum: 0 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  maxAmount?: number;
 
   @ApiPropertyOptional({ default: 1 })
   @Type(() => Number)

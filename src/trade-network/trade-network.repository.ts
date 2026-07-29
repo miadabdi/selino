@@ -37,6 +37,9 @@ import {
   type NewTradeCreditTransaction,
 } from "../database/schema/index";
 import type { SearchTradeOffersQueryDto } from "./dto/search-trade-offers-query.dto";
+import type { ListTradeCreditAgreementsQueryDto } from "./dto/list-trade-credit-agreements-query.dto";
+import type { ListCreditTransactionsQueryDto } from "./dto/list-credit-transactions-query.dto";
+import type { UpdateTradeCreditAgreementDto } from "./dto/update-trade-credit-agreement.dto";
 
 @Injectable()
 export class TradeNetworkRepository extends AbstractRepository {
@@ -418,6 +421,158 @@ export class TradeNetworkRepository extends AbstractRepository {
     return updated;
   }
 
+  async listAgreements(
+    query: ListTradeCreditAgreementsQueryDto,
+    txContext: TXContext = this.db,
+  ) {
+    const condition = and(
+      or(
+        eq(
+          tradeCreditAgreements.buyerBusinessAccountId,
+          query.businessAccountId,
+        ),
+        eq(
+          tradeCreditAgreements.supplierBusinessAccountId,
+          query.businessAccountId,
+        ),
+      ),
+      query.status == null
+        ? undefined
+        : eq(tradeCreditAgreements.status, query.status),
+      isNull(tradeCreditAgreements.deletedAt),
+    );
+    const [items, countRows] = await Promise.all([
+      txContext.query.tradeCreditAgreements.findMany({
+        where: condition,
+        with: {
+          buyerBusinessAccount: true,
+          supplierBusinessAccount: true,
+        },
+        orderBy: (table) => [desc(table.updatedAt), desc(table.id)],
+        limit: query.limit,
+        offset: (query.page - 1) * query.limit,
+      }),
+      txContext
+        .select({ total: sql<number>`count(*)::int` })
+        .from(tradeCreditAgreements)
+        .where(condition),
+    ]);
+    return {
+      items: items.map((agreement) => ({
+        ...agreement,
+        availableCredit: Math.max(
+          0,
+          agreement.creditLimit - agreement.usedCredit,
+        ),
+      })),
+      page: query.page,
+      limit: query.limit,
+      total: countRows[0]?.total ?? 0,
+    };
+  }
+
+  findAgreementDetails(id: number, txContext: TXContext = this.db) {
+    return txContext.query.tradeCreditAgreements.findFirst({
+      where: (table) => and(eq(table.id, id), isNull(table.deletedAt)),
+      with: {
+        buyerBusinessAccount: true,
+        supplierBusinessAccount: true,
+        transactions: {
+          orderBy: (table) => [desc(table.occurredAt), desc(table.id)],
+          limit: 50,
+        },
+        settlements: {
+          orderBy: (table) => [desc(table.createdAt), desc(table.id)],
+        },
+        signatures: true,
+        auditLogs: {
+          orderBy: (table) => [desc(table.createdAt), desc(table.id)],
+          limit: 50,
+        },
+        approvalRequests: {
+          orderBy: (table) => [desc(table.createdAt), desc(table.id)],
+          limit: 50,
+        },
+      },
+    });
+  }
+
+  async updateAgreement(
+    id: number,
+    dto: UpdateTradeCreditAgreementDto,
+    txContext: TXContext = this.db,
+  ) {
+    const [updated] = await txContext
+      .update(tradeCreditAgreements)
+      .set({
+        label: dto.label,
+        description: dto.description,
+        settlementCycle: dto.settlementCycle,
+        settlementDayOfMonth: dto.settlementDayOfMonth,
+        startsAt: dto.startsAt == null ? undefined : new Date(dto.startsAt),
+        endsAt: dto.endsAt == null ? undefined : new Date(dto.endsAt),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(tradeCreditAgreements.id, id),
+          isNull(tradeCreditAgreements.deletedAt),
+        ),
+      )
+      .returning();
+    return updated;
+  }
+
+  async setCreditLimit(
+    id: number,
+    creditLimit: number,
+    txContext: TXContext = this.db,
+  ) {
+    const [updated] = await txContext
+      .update(tradeCreditAgreements)
+      .set({ creditLimit, updatedAt: new Date() })
+      .where(eq(tradeCreditAgreements.id, id))
+      .returning();
+    return updated;
+  }
+
+  async listCreditTransactions(
+    agreementId: number,
+    query: ListCreditTransactionsQueryDto,
+    txContext: TXContext = this.db,
+  ) {
+    const condition = and(
+      eq(tradeCreditTransactions.agreementId, agreementId),
+      query.type == null
+        ? undefined
+        : eq(tradeCreditTransactions.type, query.type),
+      query.from == null
+        ? undefined
+        : gte(tradeCreditTransactions.occurredAt, new Date(query.from)),
+      query.to == null
+        ? undefined
+        : lte(tradeCreditTransactions.occurredAt, new Date(query.to)),
+    );
+    const [items, countRows] = await Promise.all([
+      txContext.query.tradeCreditTransactions.findMany({
+        where: condition,
+        orderBy: (table) => [desc(table.occurredAt), desc(table.id)],
+        limit: query.limit,
+        offset: (query.page - 1) * query.limit,
+      }),
+      txContext
+        .select({ total: sql<number>`count(*)::int` })
+        .from(tradeCreditTransactions)
+        .where(condition),
+    ]);
+    return {
+      items,
+      page: query.page,
+      limit: query.limit,
+      total: countRows[0]?.total ?? 0,
+    };
+  }
+
   async searchOffers(
     buyerBusinessAccountId: number,
     query: SearchTradeOffersQueryDto,
@@ -596,6 +751,62 @@ export class TradeNetworkRepository extends AbstractRepository {
         total: countRow?.total ?? 0,
         totalPages: Math.ceil((countRow?.total ?? 0) / limit),
       },
+    };
+  }
+
+  async findOfferById(
+    buyerBusinessAccountId: number,
+    storeInventoryId: number,
+    txContext: TXContext = this.db,
+  ) {
+    const inventory = await txContext.query.storeInventories.findFirst({
+      where: (table) =>
+        and(
+          eq(table.id, storeInventoryId),
+          eq(table.isActive, true),
+          eq(table.visible, true),
+          sql`${table.stock} - ${table.reservedStock} > 0`,
+          sql`${table.businessAccountId} <> ${buyerBusinessAccountId}`,
+        ),
+      with: {
+        businessAccount: true,
+        product: {
+          with: {
+            brand: true,
+            category: true,
+          },
+        },
+      },
+    });
+    if (!inventory || inventory.product.deletedAt != null) return null;
+    const agreement = await this.findActiveAgreementForBuyerSupplier(
+      buyerBusinessAccountId,
+      inventory.businessAccountId,
+      txContext,
+    );
+    return {
+      tradeOfferId: inventory.id,
+      storeInventoryId: inventory.id,
+      productId: inventory.productId,
+      title: inventory.product.title,
+      model: inventory.product.model,
+      brandId: inventory.product.brandId,
+      brandName: inventory.product.brand?.name ?? null,
+      categoryId: inventory.product.categoryId,
+      categoryName: inventory.product.category?.name ?? null,
+      supplierBusinessAccountId: inventory.businessAccountId,
+      supplierName: inventory.businessAccount.name,
+      price: inventory.price,
+      stock: inventory.stock,
+      reservedStock: inventory.reservedStock,
+      availableStock: inventory.stock - inventory.reservedStock,
+      minOrderQty: inventory.minOrderQty,
+      maxOrderQty: inventory.maxOrderQty,
+      isBestPrice: false,
+      hasContract: agreement != null,
+      contractId: agreement?.id ?? null,
+      contractLabel: agreement?.label ?? null,
+      searchScore: 0,
     };
   }
 }

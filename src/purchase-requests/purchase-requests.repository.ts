@@ -1,5 +1,18 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq, exists, gt, lt, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  exists,
+  gt,
+  gte,
+  ilike,
+  lt,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { AbstractRepository } from "../common/abstract.repository";
 import { DATABASE } from "../database/database.constants";
 import type { Database, TXContext } from "../database/database.types";
@@ -7,6 +20,7 @@ import {
   invoiceItems,
   invoices,
   purchaseRequestItems,
+  purchaseRequestStatusEvents,
   purchaseRequests,
   type NewInvoice,
   type NewInvoiceItem,
@@ -216,16 +230,47 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     page: number,
     limit: number,
     requesterId?: number,
+    filters?: {
+      status?:
+        | "new"
+        | "pending_credit_approval"
+        | "confirmed"
+        | "cancelled"
+        | "expired";
+      search?: string;
+      from?: string;
+      to?: string;
+    },
     txContext: TXContext = this.db,
   ) {
-    const condition = and(
-      buyerBusinessAccountId == null
-        ? undefined
-        : eq(purchaseRequests.buyerBusinessAccountId, buyerBusinessAccountId),
-      requesterId == null
-        ? undefined
-        : eq(purchaseRequests.requesterId, requesterId),
-    );
+    const conditions: SQL[] = [];
+    if (buyerBusinessAccountId != null) {
+      conditions.push(
+        eq(purchaseRequests.buyerBusinessAccountId, buyerBusinessAccountId),
+      );
+    }
+    if (requesterId != null) {
+      conditions.push(eq(purchaseRequests.requesterId, requesterId));
+    }
+    if (filters?.status != null) {
+      conditions.push(eq(purchaseRequests.status, filters.status));
+    }
+    if (filters?.search?.trim()) {
+      const term = `%${filters.search.trim()}%`;
+      conditions.push(
+        or(
+          ilike(purchaseRequests.code, term),
+          ilike(purchaseRequests.notes, term),
+        )!,
+      );
+    }
+    if (filters?.from != null) {
+      conditions.push(gte(purchaseRequests.createdAt, new Date(filters.from)));
+    }
+    if (filters?.to != null) {
+      conditions.push(lte(purchaseRequests.createdAt, new Date(filters.to)));
+    }
+    const condition = conditions.length > 0 ? and(...conditions) : undefined;
     const [items, countRows] = await Promise.all([
       txContext.query.purchaseRequests.findMany({
         where: condition,
@@ -263,6 +308,34 @@ export class PurchaseRequestsRepository extends AbstractRepository {
   async findById(id: number, txContext: TXContext = this.db) {
     return txContext.query.purchaseRequests.findFirst({
       where: (table) => eq(table.id, id),
+    });
+  }
+
+  findDetailedById(id: number, txContext: TXContext = this.db) {
+    return txContext.query.purchaseRequests.findFirst({
+      where: (table) => eq(table.id, id),
+      with: {
+        buyerBusinessAccount: true,
+        items: {
+          with: {
+            product: true,
+            storeInventory: {
+              with: {
+                businessAccount: true,
+              },
+            },
+          },
+        },
+        invoices: {
+          with: {
+            supplierBusinessAccount: true,
+          },
+        },
+        tradeCreditApprovalRequests: true,
+        statusEvents: {
+          orderBy: (table) => [desc(table.createdAt), desc(table.id)],
+        },
+      },
     });
   }
 
@@ -454,6 +527,34 @@ export class PurchaseRequestsRepository extends AbstractRepository {
       .update(purchaseRequests)
       .set({ status: "expired", totalAmount: 0, updatedAt: new Date() })
       .where(eq(purchaseRequests.id, purchaseRequestId));
+  }
+
+  async recordStatusEvent(
+    purchaseRequestId: number,
+    previousStatus:
+      | "new"
+      | "pending_credit_approval"
+      | "confirmed"
+      | "cancelled"
+      | "expired"
+      | null,
+    status:
+      | "new"
+      | "pending_credit_approval"
+      | "confirmed"
+      | "cancelled"
+      | "expired",
+    changedBy: number | null,
+    reason: string | null,
+    txContext: TXContext = this.db,
+  ) {
+    await txContext.insert(purchaseRequestStatusEvents).values({
+      purchaseRequestId,
+      previousStatus,
+      status,
+      changedBy,
+      reason,
+    });
   }
 
   async recalculateTotal(

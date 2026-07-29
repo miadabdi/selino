@@ -1,5 +1,6 @@
 import { applyDecorators } from "@nestjs/common";
 import {
+  ApiConflictResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -38,6 +39,23 @@ export const Get = () =>
     ApiOkResponse({ description: "Invoice details and line items." }),
     ApiNotFoundResponse({
       description: "Invoice not found or not visible to this business.",
+      type: ApiErrorResponse,
+    }),
+    AuthenticationErrors(),
+  );
+
+export const UpdateStatus = () =>
+  applyDecorators(
+    ApiOperation({
+      summary: "Advance or cancel an invoice",
+      description:
+        "Validates the invoice lifecycle transition and records a status-history event.",
+    }),
+    NumericIdParam("businessAccountId", "Business account ID"),
+    NumericIdParam("id", "Invoice ID"),
+    ApiOkResponse({ description: "The updated invoice." }),
+    ApiConflictResponse({
+      description: "The requested transition is invalid or concurrent.",
       type: ApiErrorResponse,
     }),
     AuthenticationErrors(),

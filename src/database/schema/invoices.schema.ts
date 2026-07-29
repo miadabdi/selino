@@ -23,6 +23,7 @@ export const invoiceStatusEnum = pgEnum("invoice_status", [
   "paid",
   "rejected",
   "expired",
+  "cancelled",
 ]);
 
 export const invoices = pgTable(

@@ -120,6 +120,20 @@
       "when": 1785262899277,
       "tag": "0016_manager_purchase_request_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1785314546282,
+      "tag": "0017_romantic_mesmero",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785315000000,
+      "tag": "0018_correct_manager_permissions",
+      "breakpoints": true
     }
   ]
 }

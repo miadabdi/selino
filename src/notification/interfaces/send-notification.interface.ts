@@ -7,6 +7,9 @@ export interface SendNotificationOptions {
   /** Recipient user ID. If provided, a notification record is persisted. */
   userId?: number;
 
+  /** Optional business context used to scope the persisted inbox record. */
+  businessAccountId?: number;
+
   /** Delivery channel (sms, email, etc.) */
   channel: NotificationChannel;
 

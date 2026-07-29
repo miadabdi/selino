@@ -5,6 +5,7 @@ import { SmsChannelHandler } from "./channels/sms.channel";
 import type { NotificationChannelHandler } from "./interfaces/notification-channel.interface";
 import { NOTIFICATION_CHANNELS } from "./notification.constants";
 import { NotificationConsumer } from "./notification.consumer";
+import { NotificationController } from "./notification.controller.js";
 import { NotificationChannel } from "./notification.enums";
 import { NotificationProducer } from "./notification.producer";
 import { NotificationRepository } from "./notification.repository";
@@ -17,6 +18,7 @@ import { SmsProvider } from "./providers/sms/sms-provider.abstract";
 import { SmsirSmsProvider } from "./providers/sms/smsir-sms.provider";
 
 @Module({
+  controllers: [NotificationController],
   providers: [
     // ── SMS provider (selected via SMS_PROVIDER env var) ──
     {
@@ -68,6 +70,6 @@ import { SmsirSmsProvider } from "./providers/sms/smsir-sms.provider";
     // ── Core service ──
     NotificationService,
   ],
-  exports: [NotificationService],
+  exports: [NotificationService, NotificationRepository],
 })
 export class NotificationModule {}

@@ -4,6 +4,11 @@ import { IsInt, Min } from "class-validator";
 export class AddPurchaseRequestItemDto {
   @ApiProperty()
   @IsInt()
+  @Min(1)
+  buyerBusinessAccountId!: number;
+
+  @ApiProperty()
+  @IsInt()
   storeInventoryId!: number;
 
   @ApiProperty()

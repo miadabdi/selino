@@ -21,9 +21,104 @@ describe("TradeNetworkService", () => {
     ],
   } as AuthenticatedUser;
 
-  function createService(repository: Record<string, jest.Mock>) {
-    return new TradeNetworkService(repository as never);
+  function createService(
+    repository: Record<string, jest.Mock>,
+    dependencies: {
+      inventoriesRepository?: Record<string, jest.Mock>;
+      inventoryTransactionsRepository?: Record<string, jest.Mock>;
+      ordersRepository?: Record<string, jest.Mock>;
+    } = {},
+  ) {
+    const configService = {
+      getOrThrow: jest.fn((key: string) =>
+        key === "CREDIT_APPROVAL_EXPIRY_MINUTES" ? 60 : 60000,
+      ),
+    };
+    const notificationService = { send: jest.fn() };
+    return new TradeNetworkService(
+      repository as never,
+      (dependencies.inventoriesRepository ?? {}) as never,
+      (dependencies.inventoryTransactionsRepository ?? {}) as never,
+      configService as never,
+      notificationService as never,
+      (dependencies.ordersRepository ?? {}) as never,
+    );
   }
+
+  it("derives an order atomically when an over-limit trade is approved", async () => {
+    const invoice = {
+      id: 30,
+      invoiceNumber: "INV-30",
+      status: "pending_credit_approval",
+      buyerBusinessAccountId: 100,
+      supplierBusinessAccountId: 200,
+      purchaseRequestId: 40,
+      totalAmount: 500,
+      currency: "IRR",
+      items: [{ storeInventoryId: 50, qty: 2 }],
+    };
+    const approvalRequest = {
+      id: 20,
+      status: "pending",
+      ownerBusinessAccountId: 100,
+      agreementId: 10,
+      requestedAmount: 500,
+      currency: "IRR",
+      expiresAt: new Date(Date.now() + 60_000),
+      invoice,
+    };
+    const activeInvoice = { ...invoice, status: "pending" };
+    const repository = {
+      findApprovalRequestById: jest.fn().mockResolvedValue(approvalRequest),
+      transaction: jest.fn((callback: (tx: object) => unknown) => callback({})),
+      approveApprovalRequest: jest.fn().mockResolvedValue({
+        ...approvalRequest,
+        status: "approved",
+      }),
+      increaseDebt: jest.fn().mockResolvedValue(undefined),
+      createTransaction: jest.fn().mockResolvedValue({ id: 60 }),
+      createAuditLog: jest.fn().mockResolvedValue(undefined),
+      setInvoiceStatus: jest.fn().mockResolvedValue(activeInvoice),
+      listActiveSellerRecipients: jest.fn().mockResolvedValue([]),
+    };
+    const inventoriesRepository = {
+      consumeReservedStock: jest.fn().mockResolvedValue([{ id: 50 }]),
+    };
+    const inventoryTransactionsRepository = {
+      create: jest.fn().mockResolvedValue({ id: 70 }),
+    };
+    const ordersRepository = {
+      createFromInvoice: jest.fn().mockResolvedValue({ id: 80, invoiceId: 30 }),
+    };
+    const service = createService(repository, {
+      inventoriesRepository,
+      inventoryTransactionsRepository,
+      ordersRepository,
+    });
+    const approvingUser = {
+      ...user,
+      permissions: ["manager.credit-approval-requests.approve"],
+      businessMemberships: [
+        {
+          ...user.businessMemberships[0],
+          businessAccountId: 100,
+          permissions: ["manager.credit-approval-requests.approve"],
+        },
+      ],
+    } as AuthenticatedUser;
+
+    await expect(
+      service.approveOverLimitTrade(approvingUser, 20, {}),
+    ).resolves.toMatchObject({
+      invoice: activeInvoice,
+      order: { id: 80, invoiceId: 30 },
+    });
+    expect(ordersRepository.createFromInvoice).toHaveBeenCalledWith(
+      activeInvoice,
+      approvingUser.id,
+      {},
+    );
+  });
 
   it("returns null when a confirmed purchase has no active agreement", async () => {
     const repository = {
@@ -127,7 +222,7 @@ describe("TradeNetworkService", () => {
     const service = createService(repository);
 
     await expect(
-      service.prepareCreditPurchase(user, 100, 200, 500, 300, {} as never),
+      service.prepareCreditPurchase(user, 100, 200, 500, 300, 400, {} as never),
     ).resolves.toEqual({
       status: "approved_within_limit",
       agreement,
@@ -138,6 +233,7 @@ describe("TradeNetworkService", () => {
     const agreement = {
       id: 1,
       buyerBusinessAccountId: 100,
+      supplierBusinessAccountId: 200,
       usedCredit: 900,
       creditLimit: 1000,
       currency: "IRR",
@@ -147,14 +243,14 @@ describe("TradeNetworkService", () => {
       findActiveAgreementForBuyerSupplier: jest
         .fn()
         .mockResolvedValue(agreement),
-      findPendingApprovalByPurchaseRequestId: jest.fn().mockResolvedValue(null),
+      findPendingApprovalByInvoiceId: jest.fn().mockResolvedValue(null),
       createApprovalRequest: jest.fn().mockResolvedValue(approvalRequest),
       createAuditLog: jest.fn().mockResolvedValue(undefined),
     };
     const service = createService(repository);
 
     await expect(
-      service.prepareCreditPurchase(user, 100, 200, 250, 300, {} as never),
+      service.prepareCreditPurchase(user, 100, 200, 250, 300, 400, {} as never),
     ).resolves.toEqual({
       status: "pending_approval",
       approvalRequest,
@@ -164,6 +260,8 @@ describe("TradeNetworkService", () => {
       expect.objectContaining({
         agreementId: 1,
         purchaseRequestId: 300,
+        invoiceId: 400,
+        ownerBusinessAccountId: 200,
         requestedAmount: 250,
         debtLimit: 1000,
         currentDebt: 900,

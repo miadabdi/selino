@@ -68,8 +68,6 @@ export class CaslAbilityFactory {
       });
     }
 
-    can(Action.Update, "PurchaseRequest", { requesterId: user.id });
-
     return build();
   }
 }

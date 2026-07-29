@@ -8,39 +8,19 @@ import {
   ParseIntPipe,
   Post,
 } from "@nestjs/common";
-import {
-  ApiBody,
-  ApiOperation,
-  ApiParam,
-  ApiResponse,
-  ApiTags,
-} from "@nestjs/swagger";
 import { UploadIntentDto } from "./dto/index";
 import { FilesService } from "./files.service";
 import { FileResponse, UploadIntentResponse } from "./responses/index";
+import * as Swagger from "./files.swagger";
 
-@ApiTags("Files")
+@Swagger.ControllerDocs()
 @Controller("files")
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
 
-  /**
-   * POST /files/upload-intent
-   * Request a presigned upload URL for a file.
-   */
   @Post("upload-intent")
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: "Create an upload intent with presigned URL" })
-  @ApiBody({ type: UploadIntentDto })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: "Upload intent created, presigned URL returned",
-    type: UploadIntentResponse,
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: "Invalid mimetype or file size for the specified bucket",
-  })
+  @Swagger.CreateUploadIntent()
   async createUploadIntent(
     @Body() dto: UploadIntentDto,
   ): Promise<UploadIntentResponse> {
@@ -52,27 +32,9 @@ export class FilesController {
     );
   }
 
-  /**
-   * POST /files/:id/confirm
-   * Confirm that a file has been uploaded to storage.
-   */
   @Post(":id/confirm")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Confirm a file upload" })
-  @ApiParam({ name: "id", type: Number, description: "File ID" })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: "File confirmed as ready",
-    type: FileResponse,
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: "File not found",
-  })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: "File not found in storage or invalid status",
-  })
+  @Swagger.ConfirmUpload()
   async confirmUpload(
     @Param("id", ParseIntPipe) id: number,
   ): Promise<FileResponse> {
@@ -91,22 +53,9 @@ export class FilesController {
     };
   }
 
-  /**
-   * DELETE /files/:id
-   * Soft-delete a file (removes from storage and marks deleted in DB).
-   */
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: "Soft-delete a file" })
-  @ApiParam({ name: "id", type: Number, description: "File ID" })
-  @ApiResponse({
-    status: HttpStatus.NO_CONTENT,
-    description: "File deleted successfully",
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
-    description: "File not found",
-  })
+  @Swagger.DeleteFile()
   async deleteFile(@Param("id", ParseIntPipe) id: number): Promise<void> {
     await this.filesService.softDelete(id);
   }

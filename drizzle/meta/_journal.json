@@ -99,6 +99,48 @@
       "when": 1783256051824,
       "tag": "0013_steep_chimera",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784814412546,
+      "tag": "0014_productive_magdalene",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784884039751,
+      "tag": "0015_bouncy_ben_urich",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1785262899277,
+      "tag": "0016_manager_purchase_request_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1785314546282,
+      "tag": "0017_romantic_mesmero",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1785315000000,
+      "tag": "0018_correct_manager_permissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1785327561752,
+      "tag": "0019_black_gauntlet",
+      "breakpoints": true
     }
   ]
 }

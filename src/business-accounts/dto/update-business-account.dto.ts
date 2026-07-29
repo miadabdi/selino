@@ -1,8 +1,12 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  IsDateString,
+  IsEmail,
   IsIn,
   IsOptional,
   IsString,
+  IsUrl,
+  Matches,
   MaxLength,
   MinLength,
 } from "class-validator";
@@ -24,4 +28,64 @@ export class UpdateBusinessAccountDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(255)
+  legalName?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  registrationNumber?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  nationalId?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  taxId?: string | null;
+
+  @ApiPropertyOptional({ example: "+982112345678" })
+  @IsOptional()
+  @Matches(/^\+?[0-9]{7,30}$/, {
+    message: "phone must contain 7 to 30 digits with an optional leading +",
+  })
+  phone?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(255)
+  email?: string | null;
+
+  @ApiPropertyOptional({ example: "https://example.com" })
+  @IsOptional()
+  @IsUrl({ require_protocol: true })
+  @MaxLength(500)
+  website?: string | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  licenseNumber?: string | null;
+
+  @ApiPropertyOptional({ example: "2024-01-01" })
+  @IsOptional()
+  @IsDateString()
+  licenseIssuedAt?: string | null;
+
+  @ApiPropertyOptional({ example: "2028-01-01" })
+  @IsOptional()
+  @IsDateString()
+  licenseExpiresAt?: string | null;
 }

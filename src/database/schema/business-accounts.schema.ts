@@ -1,5 +1,6 @@
 import {
   AnyPgColumn,
+  date,
   integer,
   pgEnum,
   pgTable,
@@ -27,12 +28,26 @@ export const businessAccounts = pgTable("business_accounts", {
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 
   name: varchar("name", { length: 255 }).notNull(),
+  legalName: varchar("legal_name", { length: 255 }),
   slug: varchar("slug", { length: 255 }).unique(),
   type: businessAccountTypeEnum("type").notNull().default("store"),
   description: text("description"),
+  registrationNumber: varchar("registration_number", { length: 100 }),
+  nationalId: varchar("national_id", { length: 100 }),
+  taxId: varchar("tax_id", { length: 100 }),
+  phone: varchar("phone", { length: 30 }),
+  email: varchar("email", { length: 255 }),
+  website: varchar("website", { length: 500 }),
   logoFileId: integer("logo_file_id").references((): AnyPgColumn => files.id, {
     onDelete: "set null",
   }),
+  licenseNumber: varchar("license_number", { length: 100 }),
+  licenseIssuedAt: date("license_issued_at"),
+  licenseExpiresAt: date("license_expires_at"),
+  licenseFileId: integer("license_file_id").references(
+    (): AnyPgColumn => files.id,
+    { onDelete: "set null" },
+  ),
 });
 
 export type BusinessAccount = typeof businessAccounts.$inferSelect;

@@ -1,16 +1,20 @@
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, count, eq, isNull, ne } from "drizzle-orm";
 import { AbstractRepository } from "../common/abstract.repository";
 import { DATABASE } from "../database/database.constants";
 import type { Database, TXContext } from "../database/database.types";
 import {
   businessAccounts,
+  businessAddresses,
   businessMembers,
   roles,
   type BusinessAccount,
+  type BusinessAddress,
   type NewBusinessAccount,
+  type NewBusinessAddress,
   type NewBusinessMember,
 } from "../database/schema/index";
+import type { UpdateBusinessAddressDto } from "./dto/update-business-address.dto.js";
 import type { UpdateBusinessAccountDto } from "./dto/update-business-account.dto";
 
 @Injectable()
@@ -87,22 +91,40 @@ export class BusinessAccountsRepository extends AbstractRepository {
     });
   }
 
+  findActiveMembershipByUserId(userId: number, txContext: TXContext = this.db) {
+    return txContext.query.businessMembers.findFirst({
+      where: (table) => and(eq(table.userId, userId), eq(table.isActive, true)),
+    });
+  }
+
   async updateBusinessAccountById(
     id: number,
     dto: UpdateBusinessAccountDto,
     name: string,
     slug: string | null,
     logoFileId: number | null,
+    licenseFileId: number | null,
     txContext: TXContext = this.db,
   ): Promise<BusinessAccount> {
     const [updated] = await txContext
       .update(businessAccounts)
       .set({
         name,
+        legalName: dto.legalName,
         slug,
         type: dto.type,
         description: dto.description,
+        registrationNumber: dto.registrationNumber,
+        nationalId: dto.nationalId,
+        taxId: dto.taxId,
+        phone: dto.phone,
+        email: dto.email,
+        website: dto.website,
         logoFileId,
+        licenseNumber: dto.licenseNumber,
+        licenseIssuedAt: dto.licenseIssuedAt,
+        licenseExpiresAt: dto.licenseExpiresAt,
+        licenseFileId,
         updatedAt: new Date(),
       })
       .where(eq(businessAccounts.id, id))
@@ -138,6 +160,62 @@ export class BusinessAccountsRepository extends AbstractRepository {
     });
   }
 
+  listBusinessMembers(
+    businessAccountId: number,
+    txContext: TXContext = this.db,
+  ) {
+    return txContext.query.businessMembers.findMany({
+      where: (table) => eq(table.businessAccountId, businessAccountId),
+      with: {
+        role: true,
+        user: {
+          columns: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            email: true,
+            profilePictureId: true,
+          },
+        },
+      },
+      orderBy: (table, { desc }) => [desc(table.isActive), desc(table.id)],
+    });
+  }
+
+  findBusinessMemberDetails(
+    businessAccountId: number,
+    userId: number,
+    txContext: TXContext = this.db,
+  ) {
+    return txContext.query.businessMembers.findFirst({
+      where: (table) =>
+        and(
+          eq(table.businessAccountId, businessAccountId),
+          eq(table.userId, userId),
+        ),
+      with: {
+        role: true,
+        user: {
+          columns: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            phone: true,
+            email: true,
+            profilePictureId: true,
+          },
+        },
+      },
+    });
+  }
+
+  findActiveUserById(userId: number, txContext: TXContext = this.db) {
+    return txContext.query.users.findFirst({
+      where: (table) => and(eq(table.id, userId), isNull(table.deletedAt)),
+    });
+  }
+
   async createMember(
     businessAccountId: number,
     userId: number,
@@ -156,13 +234,23 @@ export class BusinessAccountsRepository extends AbstractRepository {
     );
   }
 
-  async removeMember(
+  async updateMember(
     businessAccountId: number,
     userId: number,
+    roleName: string | undefined,
+    isActive: boolean | undefined,
     txContext: TXContext = this.db,
   ) {
-    return txContext
-      .delete(businessMembers)
+    const role = roleName
+      ? await this.findRoleByNameAssert(roleName, txContext)
+      : undefined;
+
+    const [updated] = await txContext
+      .update(businessMembers)
+      .set({
+        roleId: role?.id,
+        isActive,
+      })
       .where(
         and(
           eq(businessMembers.businessAccountId, businessAccountId),
@@ -170,6 +258,150 @@ export class BusinessAccountsRepository extends AbstractRepository {
         ),
       )
       .returning();
+
+    return updated;
+  }
+
+  async deactivateMember(
+    businessAccountId: number,
+    userId: number,
+    txContext: TXContext = this.db,
+  ) {
+    return txContext
+      .update(businessMembers)
+      .set({ isActive: false })
+      .where(
+        and(
+          eq(businessMembers.businessAccountId, businessAccountId),
+          eq(businessMembers.userId, userId),
+          eq(businessMembers.isActive, true),
+        ),
+      )
+      .returning();
+  }
+
+  async countOtherActiveManagers(
+    businessAccountId: number,
+    excludedUserId: number,
+    txContext: TXContext = this.db,
+  ): Promise<number> {
+    const [result] = await txContext
+      .select({ value: count() })
+      .from(businessMembers)
+      .innerJoin(roles, eq(roles.id, businessMembers.roleId))
+      .where(
+        and(
+          eq(businessMembers.businessAccountId, businessAccountId),
+          eq(businessMembers.isActive, true),
+          eq(roles.name, DEFAULT_MANAGER_ROLE),
+          ne(businessMembers.userId, excludedUserId),
+        ),
+      );
+
+    return result?.value ?? 0;
+  }
+
+  listAddresses(
+    businessAccountId: number,
+    txContext: TXContext = this.db,
+  ): Promise<BusinessAddress[]> {
+    return txContext.query.businessAddresses.findMany({
+      where: (table) =>
+        and(
+          eq(table.businessAccountId, businessAccountId),
+          isNull(table.deletedAt),
+        ),
+      orderBy: (table, { desc }) => [
+        desc(table.isDefault),
+        desc(table.createdAt),
+      ],
+    });
+  }
+
+  findAddressById(
+    businessAccountId: number,
+    addressId: number,
+    txContext: TXContext = this.db,
+  ): Promise<BusinessAddress | undefined> {
+    return txContext.query.businessAddresses.findFirst({
+      where: (table) =>
+        and(
+          eq(table.id, addressId),
+          eq(table.businessAccountId, businessAccountId),
+          isNull(table.deletedAt),
+        ),
+    });
+  }
+
+  async createAddress(
+    data: NewBusinessAddress,
+    txContext: TXContext = this.db,
+  ): Promise<BusinessAddress> {
+    const [created] = await txContext
+      .insert(businessAddresses)
+      .values(data)
+      .returning();
+    return created;
+  }
+
+  async updateAddress(
+    addressId: number,
+    dto: UpdateBusinessAddressDto,
+    updatedBy: number,
+    txContext: TXContext = this.db,
+  ): Promise<BusinessAddress> {
+    const [updated] = await txContext
+      .update(businessAddresses)
+      .set({
+        ...dto,
+        updatedBy,
+        updatedAt: new Date(),
+      })
+      .where(eq(businessAddresses.id, addressId))
+      .returning();
+    return updated;
+  }
+
+  async unsetDefaultAddresses(
+    businessAccountId: number,
+    exceptAddressId: number | undefined,
+    updatedBy: number,
+    txContext: TXContext = this.db,
+  ): Promise<void> {
+    await txContext
+      .update(businessAddresses)
+      .set({
+        isDefault: false,
+        updatedBy,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(businessAddresses.businessAccountId, businessAccountId),
+          eq(businessAddresses.isDefault, true),
+          isNull(businessAddresses.deletedAt),
+          exceptAddressId == null
+            ? undefined
+            : ne(businessAddresses.id, exceptAddressId),
+        ),
+      );
+  }
+
+  async softDeleteAddress(
+    addressId: number,
+    updatedBy: number,
+    txContext: TXContext = this.db,
+  ): Promise<void> {
+    await txContext
+      .update(businessAddresses)
+      .set({
+        isActive: false,
+        isDefault: false,
+        updatedBy,
+        updatedAt: new Date(),
+        deletedAt: new Date(),
+      })
+      .where(eq(businessAddresses.id, addressId));
   }
 
   async ensureRole(name: string, txContext: TXContext = this.db) {
@@ -190,3 +422,5 @@ export class BusinessAccountsRepository extends AbstractRepository {
     return created;
   }
 }
+
+const DEFAULT_MANAGER_ROLE = "manager";

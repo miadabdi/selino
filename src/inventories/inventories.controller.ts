@@ -9,7 +9,6 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard";
@@ -19,9 +18,9 @@ import { CreateInventoryDto } from "./dto/create-inventory.dto";
 import { RestockInventoryDto } from "./dto/restock-inventory.dto";
 import { UpdateInventoryDto } from "./dto/update-inventory.dto";
 import { InventoriesService } from "./inventories.service";
+import * as Swagger from "./inventories.swagger";
 
-@ApiTags("Business Account Inventories")
-@ApiBearerAuth()
+@Swagger.ControllerDocs()
 @UseGuards(JwtAuthGuard, UserEnrichmentGuard, PermissionsGuard)
 @Controller("business-accounts/:businessAccountId/inventory")
 export class InventoriesController {
@@ -29,6 +28,7 @@ export class InventoriesController {
 
   @RequirePermissions("seller.inventory.create")
   @Post()
+  @Swagger.Create()
   create(
     @Param("businessAccountId", ParseIntPipe) businessAccountId: number,
     @Req() req: Request,
@@ -40,6 +40,7 @@ export class InventoriesController {
 
   @RequirePermissions("seller.inventory.restock")
   @Patch(":id/restock")
+  @Swagger.Restock()
   restock(
     @Param("businessAccountId", ParseIntPipe) businessAccountId: number,
     @Param("id", ParseIntPipe) id: number,
@@ -52,6 +53,7 @@ export class InventoriesController {
 
   @RequirePermissions("seller.inventory.read")
   @Get()
+  @Swagger.List()
   list(
     @Param("businessAccountId", ParseIntPipe) businessAccountId: number,
     @Req() req: Request,
@@ -62,6 +64,7 @@ export class InventoriesController {
 
   @RequirePermissions("seller.inventory.update")
   @Patch(":id")
+  @Swagger.Update()
   update(
     @Param("businessAccountId", ParseIntPipe) businessAccountId: number,
     @Param("id", ParseIntPipe) id: number,
@@ -74,6 +77,7 @@ export class InventoriesController {
 
   @RequirePermissions("seller.inventory.transactions.read")
   @Get(":id/transactions")
+  @Swagger.ListTransactions()
   listTransactions(
     @Param("businessAccountId", ParseIntPipe) businessAccountId: number,
     @Param("id", ParseIntPipe) id: number,

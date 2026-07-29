@@ -15,27 +15,14 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { FileInterceptor } from "@nestjs/platform-express";
-import {
-  ApiBearerAuth,
-  ApiBody,
-  ApiConsumes,
-  ApiOperation,
-  ApiResponse,
-  ApiTags,
-  ApiUnauthorizedResponse,
-} from "@nestjs/swagger";
 import { GetUser } from "../auth/decorators/index";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { UserEnrichmentGuard } from "../auth/guards/user-enrichment.guard";
 import type { AuthenticatedUser } from "../auth/interfaces/index";
 import { imageFileFilter } from "../files/index";
-import {
-  GetMeResponse,
-  UpdateProfileBody,
-  UpdateUserDto,
-  UserBase,
-} from "./dto/index";
+import { UpdateUserDto, UserBase } from "./dto/index";
 import { UsersService } from "./users.service";
+import * as Swagger from "./users.swagger";
 
 @Injectable()
 export class ProfilePictureUploadInterceptor implements NestInterceptor {
@@ -57,31 +44,16 @@ export class ProfilePictureUploadInterceptor implements NestInterceptor {
   }
 }
 
-@ApiTags("Users")
+@Swagger.ControllerDocs()
 @Controller("users")
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  /**
-   * PUT /users/me
-   * Update the current user's profile information.
-   * Accepts an optional profile picture as a multipart file upload.
-   */
   @Put("me")
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, UserEnrichmentGuard)
-  @ApiBearerAuth()
   @UseInterceptors(ProfilePictureUploadInterceptor)
-  @ApiConsumes("multipart/form-data")
-  @ApiOperation({ summary: "Update current user's profile" })
-  @ApiBody({ type: UpdateProfileBody })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description:
-      "User updated successfully, email verification sent if email changed",
-    type: UserBase,
-  })
-  @ApiUnauthorizedResponse({ description: "Not authenticated" })
+  @Swagger.UpdateProfile()
   async updateProfile(
     @GetUser() user: AuthenticatedUser,
     @Body() dto: UpdateUserDto,
@@ -90,20 +62,9 @@ export class UsersController {
     return await this.usersService.update(user.id, dto, profilePicture);
   }
 
-  /**
-   * GET /users/me
-   * Return the current authenticated user's info.
-   */
   @Get("me")
   @UseGuards(JwtAuthGuard, UserEnrichmentGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: "Get current user profile" })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: "Current authenticated user info",
-    type: GetMeResponse,
-  })
-  @ApiUnauthorizedResponse({ description: "Not authenticated" })
+  @Swagger.GetProfile()
   getProfile(@GetUser() user: AuthenticatedUser): AuthenticatedUser {
     return user;
   }

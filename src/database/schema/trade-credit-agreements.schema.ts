@@ -66,7 +66,7 @@ export const tradeCreditAuditActionEnum = pgEnum("trade_credit_audit_action", [
 
 export const tradeCreditApprovalStatusEnum = pgEnum(
   "trade_credit_approval_status",
-  ["pending", "approved", "rejected", "cancelled"],
+  ["pending", "approved", "rejected", "cancelled", "expired"],
 );
 
 export const tradeCreditAgreements = pgTable(
@@ -179,12 +179,11 @@ export const tradeCreditApprovalRequests = pgTable(
       .references((): AnyPgColumn => purchaseRequests.id, {
         onDelete: "restrict",
       }),
-    invoiceId: integer("invoice_id").references(
-      (): AnyPgColumn => invoices.id,
-      {
-        onDelete: "set null",
-      },
-    ),
+    invoiceId: integer("invoice_id")
+      .notNull()
+      .references((): AnyPgColumn => invoices.id, {
+        onDelete: "restrict",
+      }),
     requestedBy: integer("requested_by")
       .notNull()
       .references((): AnyPgColumn => users.id, {
@@ -214,6 +213,7 @@ export const tradeCreditApprovalRequests = pgTable(
       onDelete: "set null",
     }),
     rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     note: text("note"),
   },
   (table) => [
@@ -225,6 +225,7 @@ export const tradeCreditApprovalRequests = pgTable(
       table.ownerBusinessAccountId,
       table.status,
     ),
+    unique("trade_credit_approval_requests_invoice_unique").on(table.invoiceId),
     check(
       "trade_credit_approval_requests_amount_check",
       sql`${table.requestedAmount} > 0 and ${table.overLimitAmount} > 0`,

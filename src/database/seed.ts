@@ -64,13 +64,29 @@ const permissionKeys = [
   "seller.team.read",
   "seller.team.manage",
   "manager.dashboard.overview",
+  "manager.dashboard.read",
+  "manager.business.read",
+  "manager.business.update",
+  "manager.addresses.manage",
+  "manager.team.read",
+  "manager.team.manage",
   "manager.credit.read",
   "manager.credit.manage",
   "manager.orders.track",
+  "manager.orders.manage",
   "manager.suppliers.read",
   "manager.suppliers.manage",
+  "manager.suppliers.create",
+  "manager.suppliers.update",
+  "manager.suppliers.delete",
   "manager.reports.read",
+  "manager.reports.export",
   "manager.support.read",
+  "manager.support.create",
+  "manager.support.reply",
+  "manager.support.update",
+  "notifications.read",
+  "notifications.preferences.manage",
   "manager.agreements.read",
   "manager.agreements.create",
   "manager.agreements.update",
@@ -96,19 +112,37 @@ const featureKeys = [
   "reports",
   "support",
   "team",
+  "business_profile",
+  "notifications",
 ] as const;
 
 const rolePermissionKeys: Record<string, readonly string[]> = {
   admin: ["*"],
   manager: [
     "manager.dashboard.overview",
+    "manager.dashboard.read",
+    "manager.business.read",
+    "manager.business.update",
+    "manager.addresses.manage",
+    "manager.team.read",
+    "manager.team.manage",
     "manager.credit.read",
     "manager.credit.manage",
     "manager.orders.track",
+    "manager.orders.manage",
     "manager.suppliers.read",
     "manager.suppliers.manage",
+    "manager.suppliers.create",
+    "manager.suppliers.update",
+    "manager.suppliers.delete",
     "manager.reports.read",
+    "manager.reports.export",
     "manager.support.read",
+    "manager.support.create",
+    "manager.support.reply",
+    "manager.support.update",
+    "notifications.read",
+    "notifications.preferences.manage",
     "manager.agreements.read",
     "manager.agreements.create",
     "manager.agreements.update",
@@ -132,6 +166,8 @@ const rolePermissionKeys: Record<string, readonly string[]> = {
     "seller.invoices.active.read.own",
     "seller.invoices.history.page",
     "seller.invoices.history.read.own",
+    "notifications.read",
+    "notifications.preferences.manage",
   ],
   seller_manager: [
     "seller.dashboard.overview",
@@ -156,12 +192,19 @@ const rolePermissionKeys: Record<string, readonly string[]> = {
     "seller.invoices.history.read.all",
     "seller.team.read",
     "seller.team.manage",
+    "notifications.read",
+    "notifications.preferences.manage",
   ],
   collector: [],
 };
 
 const featurePermissionKeys: Record<string, readonly string[]> = {
-  dashboard: ["*", "seller.dashboard.overview", "manager.dashboard.overview"],
+  dashboard: [
+    "*",
+    "seller.dashboard.overview",
+    "manager.dashboard.overview",
+    "manager.dashboard.read",
+  ],
   purchase_requests: [
     "seller.purchase-requests.page",
     "seller.purchase-requests.read.own",
@@ -202,11 +245,33 @@ const featurePermissionKeys: Record<string, readonly string[]> = {
     "manager.credit-approval-requests.approve",
     "manager.credit-approval-requests.reject",
   ],
-  orders: ["manager.orders.track"],
-  suppliers: ["manager.suppliers.read", "manager.suppliers.manage"],
-  reports: ["manager.reports.read"],
-  support: ["manager.support.read"],
-  team: ["seller.team.read", "seller.team.manage"],
+  orders: ["manager.orders.track", "manager.orders.manage"],
+  suppliers: [
+    "manager.suppliers.read",
+    "manager.suppliers.manage",
+    "manager.suppliers.create",
+    "manager.suppliers.update",
+    "manager.suppliers.delete",
+  ],
+  reports: ["manager.reports.read", "manager.reports.export"],
+  support: [
+    "manager.support.read",
+    "manager.support.create",
+    "manager.support.reply",
+    "manager.support.update",
+  ],
+  team: [
+    "seller.team.read",
+    "seller.team.manage",
+    "manager.team.read",
+    "manager.team.manage",
+  ],
+  business_profile: [
+    "manager.business.read",
+    "manager.business.update",
+    "manager.addresses.manage",
+  ],
+  notifications: ["notifications.read", "notifications.preferences.manage"],
 };
 
 const packageFeatureKeys: Record<string, readonly string[]> = {
@@ -252,13 +317,29 @@ const permissionDescriptions: Record<string, string> = {
   "seller.team.read": "مشاهده تیم فروشنده",
   "seller.team.manage": "مدیریت تیم فروشنده",
   "manager.dashboard.overview": "مشاهده داشبورد مدیر",
+  "manager.dashboard.read": "خواندن داده های داشبورد مدیر",
+  "manager.business.read": "مشاهده اطلاعات کسب و کار",
+  "manager.business.update": "ویرایش اطلاعات کسب و کار",
+  "manager.addresses.manage": "مدیریت نشانی های کسب و کار",
+  "manager.team.read": "مشاهده اعضای کسب و کار",
+  "manager.team.manage": "مدیریت اعضای کسب و کار",
   "manager.credit.read": "مشاهده اعتبار",
   "manager.credit.manage": "مدیریت اعتبار",
   "manager.orders.track": "پیگیری سفارش ها",
+  "manager.orders.manage": "مدیریت وضعیت سفارش ها",
   "manager.suppliers.read": "مشاهده تامین کنندگان",
   "manager.suppliers.manage": "مدیریت تامین کنندگان",
+  "manager.suppliers.create": "افزودن تامین کننده",
+  "manager.suppliers.update": "ویرایش تامین کننده",
+  "manager.suppliers.delete": "حذف تامین کننده",
   "manager.reports.read": "مشاهده گزارش ها",
+  "manager.reports.export": "خروجی گرفتن از گزارش ها",
   "manager.support.read": "دسترسی به پشتیبانی",
+  "manager.support.create": "ایجاد درخواست پشتیبانی",
+  "manager.support.reply": "پاسخ به درخواست پشتیبانی",
+  "manager.support.update": "ویرایش وضعیت درخواست پشتیبانی",
+  "notifications.read": "مشاهده اعلان ها",
+  "notifications.preferences.manage": "مدیریت تنظیمات اعلان ها",
   "manager.agreements.read": "مشاهده قراردادهای اعتباری",
   "manager.agreements.create": "ایجاد قرارداد اعتباری",
   "manager.agreements.update": "ویرایش قرارداد اعتباری",
@@ -284,6 +365,8 @@ const featureNames: Record<string, string> = {
   reports: "گزارش ها",
   support: "پشتیبانی",
   team: "تیم",
+  business_profile: "اطلاعات کسب و کار",
+  notifications: "اعلان ها",
 };
 
 const packageNames: Record<string, string> = {
@@ -297,6 +380,8 @@ type SeedUser = {
   firstName: string;
   lastName: string;
   isAdmin?: boolean;
+  nationalCode?: string;
+  birthDate?: string;
 };
 
 const seedUsers: readonly SeedUser[] = [
@@ -312,6 +397,8 @@ const seedUsers: readonly SeedUser[] = [
     email: "modir@example.com",
     firstName: "علی",
     lastName: "احمدی",
+    nationalCode: "0012345678",
+    birthDate: "1990-04-21",
   },
   {
     phone: "+989120000002",
@@ -333,14 +420,33 @@ const seedUsers: readonly SeedUser[] = [
   },
 ] as const;
 
-const seedBusinessAccount = {
+type SeedBusinessAccount = {
+  name: string;
+  slug: string;
+  type: "store" | "company";
+  description: string;
+  legalName?: string;
+  registrationNumber?: string;
+  nationalId?: string;
+  licenseNumber?: string;
+  licenseIssuedAt?: string;
+  licenseExpiresAt?: string;
+};
+
+const seedBusinessAccount: SeedBusinessAccount = {
   name: "فروشگاه آزمایشی سلینو",
   slug: "selino-demo-business",
   type: "store" as const,
   description: "حساب کسب و کار آزمایشی برای تست پنل فارسی",
+  legalName: "فروشگاه آزمایشی سلینو",
+  registrationNumber: "REG-SELINO-001",
+  nationalId: "14001234567",
+  licenseNumber: "LIC-SELINO-001",
+  licenseIssuedAt: "2024-01-01",
+  licenseExpiresAt: "2029-01-01",
 };
 
-const seedSupplierBusinessAccount = {
+const seedSupplierBusinessAccount: SeedBusinessAccount = {
   name: "تامین کننده آزمایشی سلینو",
   slug: "selino-demo-supplier",
   type: "company" as const,
@@ -528,6 +634,8 @@ async function upsertUser(db: SeedDb, data: SeedUser): Promise<User> {
         email: data.email,
         firstName: data.firstName,
         lastName: data.lastName,
+        nationalCode: data.nationalCode,
+        birthDate: data.birthDate,
         isAdmin: data.isAdmin ?? false,
         isPhoneVerified: true,
         isEmailVerified: true,
@@ -546,6 +654,8 @@ async function upsertUser(db: SeedDb, data: SeedUser): Promise<User> {
       email: data.email,
       firstName: data.firstName,
       lastName: data.lastName,
+      nationalCode: data.nationalCode,
+      birthDate: data.birthDate,
       isAdmin: data.isAdmin ?? false,
       isPhoneVerified: true,
       isEmailVerified: true,
@@ -567,7 +677,7 @@ async function upsertSupplierBusinessAccount(
 
 async function upsertBusinessAccountData(
   db: SeedDb,
-  data: typeof seedBusinessAccount | typeof seedSupplierBusinessAccount,
+  data: SeedBusinessAccount,
 ): Promise<BusinessAccount> {
   const existing = await db.query.businessAccounts.findFirst({
     where: (table) => eq(table.slug, data.slug),
@@ -580,6 +690,12 @@ async function upsertBusinessAccountData(
         name: data.name,
         type: data.type,
         description: data.description,
+        legalName: data.legalName,
+        registrationNumber: data.registrationNumber,
+        nationalId: data.nationalId,
+        licenseNumber: data.licenseNumber,
+        licenseIssuedAt: data.licenseIssuedAt,
+        licenseExpiresAt: data.licenseExpiresAt,
         updatedAt: new Date(),
       })
       .where(eq(businessAccounts.id, existing.id))

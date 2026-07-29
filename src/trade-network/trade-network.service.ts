@@ -1,4 +1,14 @@
-import { HttpStatus, Injectable } from "@nestjs/common";
+import {
+  HttpStatus,
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { NotificationChannel } from "../notification/notification.enums";
+import { NotificationService } from "../notification/notification.service";
+import { OrdersRepository } from "../orders/orders.repository";
 import type { AuthenticatedUser } from "../auth/interfaces/index";
 import {
   assertBusinessPermission,
@@ -14,15 +24,50 @@ import type { CreateTradeCreditAgreementDto } from "./dto/create-trade-credit-ag
 import type { RejectOverLimitTradeDto } from "./dto/reject-over-limit-trade.dto";
 import type { SearchTradeOffersQueryDto } from "./dto/search-trade-offers-query.dto";
 import type { SuspendTradeCreditAgreementDto } from "./dto/suspend-trade-credit-agreement.dto";
+import type { AdjustCreditLimitDto } from "./dto/adjust-credit-limit.dto";
+import type { ListCreditTransactionsQueryDto } from "./dto/list-credit-transactions-query.dto";
+import type { ListTradeCreditAgreementsQueryDto } from "./dto/list-trade-credit-agreements-query.dto";
+import type { UpdateTradeCreditAgreementDto } from "./dto/update-trade-credit-agreement.dto";
 import { TradeNetworkRepository } from "./trade-network.repository";
 
 @Injectable()
-export class TradeNetworkService {
+export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(TradeNetworkService.name);
+  private expiryTimer?: NodeJS.Timeout;
+  private isExpiringApprovals = false;
+  private readonly approvalExpiryMinutes: number;
+  private readonly approvalExpiryCheckIntervalMs: number;
+
   constructor(
     private readonly repository: TradeNetworkRepository,
     private readonly inventoriesRepository: InventoriesRepository,
     private readonly storeInventoryTransactionsRepository: StoreInventoryTransactionsRepository,
-  ) {}
+    configService: ConfigService,
+    private readonly notificationService: NotificationService,
+    private readonly ordersRepository: OrdersRepository,
+  ) {
+    this.approvalExpiryMinutes = configService.getOrThrow<number>(
+      "CREDIT_APPROVAL_EXPIRY_MINUTES",
+    );
+    this.approvalExpiryCheckIntervalMs = configService.getOrThrow<number>(
+      "CREDIT_APPROVAL_EXPIRY_CHECK_INTERVAL_MS",
+    );
+  }
+
+  onModuleInit() {
+    this.expiryTimer = setInterval(() => {
+      void this.expirePendingApprovals().catch((error: unknown) => {
+        this.logger.error(
+          "Failed to expire credit approvals",
+          error instanceof Error ? error.stack : String(error),
+        );
+      });
+    }, this.approvalExpiryCheckIntervalMs);
+  }
+
+  onModuleDestroy() {
+    if (this.expiryTimer) clearInterval(this.expiryTimer);
+  }
 
   private resolveBuyerBusinessAccountId(
     user: AuthenticatedUser,
@@ -43,6 +88,180 @@ export class TradeNetworkService {
     return businessAccountId;
   }
 
+  private assertAgreementParty(
+    user: AuthenticatedUser,
+    agreement: {
+      buyerBusinessAccountId: number;
+      supplierBusinessAccountId: number;
+    },
+    permission: string,
+  ) {
+    if (user.isAdmin === true || user.permissions.includes("*")) {
+      return agreement.buyerBusinessAccountId;
+    }
+    const membership = user.businessMemberships.find(
+      (item) =>
+        item.isActive &&
+        item.permissions.includes(permission) &&
+        (item.businessAccountId === agreement.buyerBusinessAccountId ||
+          item.businessAccountId === agreement.supplierBusinessAccountId),
+    );
+    if (!membership) {
+      throwHttpError(
+        HttpStatus.FORBIDDEN,
+        "Agreement party permission is required",
+      );
+    }
+    return membership.businessAccountId;
+  }
+
+  listAgreements(
+    user: AuthenticatedUser,
+    query: ListTradeCreditAgreementsQueryDto,
+  ) {
+    assertBusinessPermission(
+      user,
+      query.businessAccountId,
+      "manager.agreements.read",
+    );
+    return this.repository.listAgreements(query);
+  }
+
+  async getAgreement(user: AuthenticatedUser, agreementId: number) {
+    const agreement = await this.repository.findAgreementDetails(agreementId);
+    if (!agreement) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
+    }
+    this.assertAgreementParty(user, agreement, "manager.agreements.read");
+    return {
+      ...agreement,
+      availableCredit: Math.max(
+        0,
+        agreement.creditLimit - agreement.usedCredit,
+      ),
+    };
+  }
+
+  async updateAgreement(
+    user: AuthenticatedUser,
+    agreementId: number,
+    dto: UpdateTradeCreditAgreementDto,
+  ) {
+    const agreement = await this.repository.findAgreementById(agreementId);
+    if (!agreement) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
+    }
+    const actorBusinessAccountId = this.assertAgreementParty(
+      user,
+      agreement,
+      "manager.agreements.update",
+    );
+    if (
+      dto.startsAt != null &&
+      dto.endsAt != null &&
+      new Date(dto.endsAt) <= new Date(dto.startsAt)
+    ) {
+      throwHttpError(HttpStatus.BAD_REQUEST, "Agreement end must follow start");
+    }
+    return this.repository.transaction(async (tx) => {
+      const updated = await this.repository.updateAgreement(
+        agreementId,
+        dto,
+        tx,
+      );
+      await this.repository.createAuditLog(
+        {
+          agreementId,
+          action: "updated",
+          actorUserId: user.id,
+          actorBusinessAccountId,
+          before: agreement,
+          after: updated,
+        },
+        tx,
+      );
+      return updated;
+    });
+  }
+
+  async adjustCreditLimit(
+    user: AuthenticatedUser,
+    agreementId: number,
+    dto: AdjustCreditLimitDto,
+  ) {
+    const agreement = await this.repository.findAgreementById(agreementId);
+    if (!agreement) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
+    }
+    const actorBusinessAccountId = this.assertAgreementParty(
+      user,
+      agreement,
+      "manager.credit.manage",
+    );
+    const delta = dto.direction === "increase" ? dto.amount : -dto.amount;
+    const nextLimit = agreement.creditLimit + delta;
+    if (nextLimit < agreement.usedCredit || nextLimit < 0) {
+      throwHttpError(
+        HttpStatus.CONFLICT,
+        "Credit limit cannot be lower than current debt",
+      );
+    }
+    return this.repository.transaction(async (tx) => {
+      const updated = await this.repository.setCreditLimit(
+        agreementId,
+        nextLimit,
+        tx,
+      );
+      const transaction = await this.repository.createTransaction(
+        {
+          agreementId,
+          type: "adjustment",
+          amount: delta,
+          currency: agreement.currency,
+          referenceType: "credit_limit",
+          referenceId: agreementId,
+          description: dto.reason ?? "Credit limit adjusted",
+          metadata: {
+            previousCreditLimit: agreement.creditLimit,
+            nextCreditLimit: nextLimit,
+          },
+          createdBy: user.id,
+        },
+        tx,
+      );
+      await this.repository.createAuditLog(
+        {
+          agreementId,
+          action: "updated",
+          actorUserId: user.id,
+          actorBusinessAccountId,
+          before: { creditLimit: agreement.creditLimit },
+          after: { creditLimit: nextLimit, transactionId: transaction.id },
+          metadata: { reason: dto.reason ?? null },
+        },
+        tx,
+      );
+      return {
+        agreement: updated,
+        transaction,
+        availableCredit: Math.max(0, nextLimit - agreement.usedCredit),
+      };
+    });
+  }
+
+  async listCreditTransactions(
+    user: AuthenticatedUser,
+    agreementId: number,
+    query: ListCreditTransactionsQueryDto,
+  ) {
+    const agreement = await this.repository.findAgreementById(agreementId);
+    if (!agreement) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
+    }
+    this.assertAgreementParty(user, agreement, "manager.credit.read");
+    return this.repository.listCreditTransactions(agreementId, query);
+  }
+
   async searchOffers(
     user: AuthenticatedUser,
     query: SearchTradeOffersQueryDto,
@@ -53,6 +272,21 @@ export class TradeNetworkService {
     );
 
     return this.repository.searchOffers(buyerBusinessAccountId, query);
+  }
+
+  async getOffer(user: AuthenticatedUser, storeInventoryId: number) {
+    const buyerBusinessAccountId = this.resolveBuyerBusinessAccountId(
+      user,
+      "seller.inventory.read",
+    );
+    const offer = await this.repository.findOfferById(
+      buyerBusinessAccountId,
+      storeInventoryId,
+    );
+    if (!offer) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Trade offer not found");
+    }
+    return offer;
   }
 
   async createAgreement(
@@ -322,6 +556,7 @@ export class TradeNetworkService {
     supplierBusinessAccountId: number,
     amount: number,
     purchaseRequestId: number,
+    invoiceId: number,
     tx: TXContext,
   ) {
     const agreement = await this.repository.findActiveAgreementForBuyerSupplier(
@@ -339,11 +574,10 @@ export class TradeNetworkService {
       return { status: "approved_within_limit" as const, agreement };
     }
 
-    const existing =
-      await this.repository.findPendingApprovalByPurchaseRequestId(
-        purchaseRequestId,
-        tx,
-      );
+    const existing = await this.repository.findPendingApprovalByInvoiceId(
+      invoiceId,
+      tx,
+    );
 
     if (existing) {
       return { status: "pending_approval" as const, approvalRequest: existing };
@@ -353,8 +587,9 @@ export class TradeNetworkService {
       {
         agreementId: agreement.id,
         purchaseRequestId,
+        invoiceId,
         requestedBy: user.id,
-        ownerBusinessAccountId: agreement.buyerBusinessAccountId,
+        ownerBusinessAccountId: agreement.supplierBusinessAccountId,
         requestedAmount: amount,
         debtLimit: agreement.creditLimit,
         currentDebt: agreement.usedCredit,
@@ -362,6 +597,9 @@ export class TradeNetworkService {
         overLimitAmount: projectedDebt - agreement.creditLimit,
         currency: agreement.currency,
         status: "pending",
+        expiresAt: new Date(
+          Date.now() + this.approvalExpiryMinutes * 60 * 1000,
+        ),
       },
       tx,
     );
@@ -380,9 +618,13 @@ export class TradeNetworkService {
     return { status: "pending_approval" as const, approvalRequest };
   }
 
-  async listPendingApprovalRequests(user: AuthenticatedUser) {
-    const ownerBusinessAccountId = this.resolveBuyerBusinessAccountId(
+  async listPendingApprovalRequests(
+    user: AuthenticatedUser,
+    ownerBusinessAccountId: number,
+  ) {
+    assertBusinessPermission(
       user,
+      ownerBusinessAccountId,
       "manager.credit-approval-requests.read",
     );
     return this.repository.listPendingApprovalRequestsForOwner(
@@ -411,16 +653,18 @@ export class TradeNetworkService {
       approvalRequest.ownerBusinessAccountId,
       "manager.credit-approval-requests.approve",
     );
-
-    const request = approvalRequest.purchaseRequest;
-    if (!request || request.status !== "pending_credit_approval") {
+    if (approvalRequest.expiresAt <= new Date()) {
       throwHttpError(
         HttpStatus.CONFLICT,
-        "Purchase request is not pending credit approval",
+        "Credit approval request has expired",
       );
     }
+    const invoice = approvalRequest.invoice;
+    if (!invoice || invoice.status !== "pending_credit_approval") {
+      throwHttpError(HttpStatus.CONFLICT, "Invoice is not pending approval");
+    }
 
-    return this.repository.transaction(async (tx) => {
+    const result = await this.repository.transaction(async (tx) => {
       const approved = await this.repository.approveApprovalRequest(
         approvalRequest.id,
         user.id,
@@ -435,17 +679,7 @@ export class TradeNetworkService {
         );
       }
 
-      const invoice = await this.repository.createInvoiceFromPurchaseRequest(
-        request.id,
-        request.requesterId,
-        tx,
-      );
-
-      if (!invoice) {
-        throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");
-      }
-
-      for (const item of request.items) {
+      for (const item of invoice.items) {
         if (item.storeInventoryId == null) {
           throwHttpError(HttpStatus.CONFLICT, "Inventory linkage missing");
         }
@@ -502,8 +736,73 @@ export class TradeNetworkService {
         tx,
       );
 
-      return { approvalRequest: approved, invoice };
+      const activeInvoice = await this.repository.setInvoiceStatus(
+        invoice.id,
+        "pending",
+        tx,
+      );
+      const order = await this.ordersRepository.createFromInvoice(
+        activeInvoice,
+        user.id,
+        tx,
+      );
+      if (!order) {
+        throwHttpError(
+          HttpStatus.CONFLICT,
+          "Order could not be derived from approved invoice",
+        );
+      }
+      return { approvalRequest: approved, invoice: activeInvoice, order };
     });
+    await this.notifyActivatedInvoice(result.invoice);
+    return result;
+  }
+
+  private async notifyActivatedInvoice(invoice: {
+    id: number;
+    invoiceNumber: string;
+    supplierBusinessAccountId: number;
+  }) {
+    const recipients = await this.repository.listActiveSellerRecipients(
+      invoice.supplierBusinessAccountId,
+    );
+    const deliveries: Promise<void>[] = [];
+    for (const recipient of recipients) {
+      const options = {
+        userId: recipient.id,
+        type: "invoice_created",
+        title: "فاکتور فروش جدید",
+        body: `فاکتور ${invoice.invoiceNumber} پس از تایید اعتبار فعال شد.`,
+      };
+      if (recipient.isPhoneVerified) {
+        deliveries.push(
+          this.notificationService.send({
+            ...options,
+            channel: NotificationChannel.SMS,
+            destination: recipient.phone,
+          }),
+        );
+      }
+      if (recipient.isEmailVerified && recipient.email) {
+        deliveries.push(
+          this.notificationService.send({
+            ...options,
+            channel: NotificationChannel.EMAIL,
+            destination: recipient.email,
+          }),
+        );
+      }
+    }
+    for (const outcome of await Promise.allSettled(deliveries)) {
+      if (outcome.status === "rejected") {
+        this.logger.error(
+          "Failed to queue activated invoice notification",
+          outcome.reason instanceof Error
+            ? outcome.reason.stack
+            : String(outcome.reason),
+        );
+      }
+    }
   }
 
   async rejectOverLimitTrade(
@@ -527,10 +826,9 @@ export class TradeNetworkService {
       approvalRequest.ownerBusinessAccountId,
       "manager.credit-approval-requests.reject",
     );
-
-    const request = approvalRequest.purchaseRequest;
-    if (!request) {
-      throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");
+    const invoice = approvalRequest.invoice;
+    if (!invoice || invoice.status !== "pending_credit_approval") {
+      throwHttpError(HttpStatus.CONFLICT, "Invoice is not pending approval");
     }
 
     return this.repository.transaction(async (tx) => {
@@ -548,7 +846,7 @@ export class TradeNetworkService {
         );
       }
 
-      for (const item of request.items) {
+      for (const item of invoice.items) {
         if (item.storeInventoryId == null) {
           continue;
         }
@@ -564,7 +862,7 @@ export class TradeNetworkService {
         }
       }
 
-      await this.repository.setPurchaseRequestCancelled(request.id, tx);
+      await this.repository.setInvoiceStatus(invoice.id, "rejected", tx);
 
       await this.repository.createAuditLog(
         {
@@ -580,6 +878,44 @@ export class TradeNetworkService {
 
       return rejected;
     });
+  }
+
+  async expirePendingApprovals() {
+    if (this.isExpiringApprovals) return;
+    this.isExpiringApprovals = true;
+    try {
+      const now = new Date();
+      const approvals =
+        await this.repository.findExpiredPendingApprovalIds(now);
+      for (const candidate of approvals) {
+        await this.repository.transaction(async (tx) => {
+          const approval =
+            await this.repository.findExpiredPendingApprovalForUpdate(
+              candidate.id,
+              now,
+              tx,
+            );
+          const invoice = approval?.invoice;
+          if (!approval || !invoice) return;
+          for (const item of invoice.items) {
+            if (item.storeInventoryId == null) continue;
+            const released =
+              await this.inventoriesRepository.releaseReservedStock(
+                item.storeInventoryId,
+                item.qty,
+                tx,
+              );
+            if (released.length === 0) {
+              throwHttpError(HttpStatus.CONFLICT, "Stock reservation conflict");
+            }
+          }
+          await this.repository.expireApprovalRequest(approval.id, tx);
+          await this.repository.setInvoiceStatus(invoice.id, "expired", tx);
+        });
+      }
+    } finally {
+      this.isExpiringApprovals = false;
+    }
   }
 
   async createSettlement(user: AuthenticatedUser, agreementId: number) {

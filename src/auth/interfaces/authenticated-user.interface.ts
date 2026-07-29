@@ -1,6 +1,12 @@
 import type { User } from "../../database/schema/index";
 
-export type BusinessRole = "manager" | "seller" | "collector" | "admin" | null;
+export type BusinessRole =
+  | "manager"
+  | "seller"
+  | "seller_manager"
+  | "collector"
+  | "admin"
+  | null;
 
 export type AuthenticatedBusinessMembership = {
   id: number;

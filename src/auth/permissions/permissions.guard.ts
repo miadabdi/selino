@@ -7,7 +7,11 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import type { AuthenticatedUser } from "../interfaces/index";
-import { REQUIRED_PERMISSIONS_KEY } from "./permissions.decorator";
+import {
+  REQUIRED_ANY_PERMISSIONS_KEY,
+  REQUIRED_PERMISSIONS_KEY,
+} from "./permissions.decorator";
+import { hasPermission } from "./permission-scope";
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -19,8 +23,16 @@ export class PermissionsGuard implements CanActivate {
         context.getHandler(),
         context.getClass(),
       ]) ?? [];
+    const requiredAnyPermissions =
+      this.reflector.getAllAndOverride<string[]>(REQUIRED_ANY_PERMISSIONS_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]) ?? [];
 
-    if (requiredPermissions.length === 0) {
+    if (
+      requiredPermissions.length === 0 &&
+      requiredAnyPermissions.length === 0
+    ) {
       return true;
     }
 
@@ -31,12 +43,16 @@ export class PermissionsGuard implements CanActivate {
       throw new UnauthorizedException("User not authenticated");
     }
 
-    const userPermissionSet = new Set(user.permissions);
     const allowed = requiredPermissions.every((permission) =>
-      userPermissionSet.has(permission),
+      hasPermission(user, permission),
     );
+    const anyAllowed =
+      requiredAnyPermissions.length === 0 ||
+      requiredAnyPermissions.some((permission) =>
+        hasPermission(user, permission),
+      );
 
-    if (!allowed) {
+    if (!allowed || !anyAllowed) {
       throw new ForbiddenException(
         "You do not have permission for this action",
       );

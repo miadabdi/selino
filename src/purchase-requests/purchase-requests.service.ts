@@ -1,4 +1,3 @@
-import { subject } from "@casl/ability";
 import {
   HttpStatus,
   Injectable,
@@ -7,8 +6,12 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Action, CaslAbilityFactory } from "../auth/casl/index";
 import type { AuthenticatedUser } from "../auth/interfaces/index";
+import {
+  resolveBusinessAccountIdForPermission,
+  resolveOwnAllScope,
+  withIsOwn,
+} from "../auth/permissions";
 import { throwHttpError } from "../common/http-error";
 import { InventoriesRepository } from "../inventories/inventories.repository";
 import { StoreInventoryTransactionsRepository } from "../inventories/store-inventory-transactions.repository";
@@ -28,7 +31,6 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     private readonly purchaseRequestsRepository: PurchaseRequestsRepository,
     private readonly inventoriesRepository: InventoriesRepository,
     private readonly storeInventoryTransactionsRepository: StoreInventoryTransactionsRepository,
-    private readonly caslAbilityFactory: CaslAbilityFactory,
     private readonly configService: ConfigService,
     private readonly tradeNetworkService: TradeNetworkService,
   ) {
@@ -57,34 +59,47 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private assertPurchaseRequestCasl(
+  private async assertPurchaseRequestScope(
     user: AuthenticatedUser,
     requesterId: number,
-    action: Action,
+    ownPermission: string,
+    allPermission: string,
   ) {
-    const ability = this.caslAbilityFactory.createForUser(user);
-    const canUpdatePurchaseRequest = ability.can(
-      action,
-      subject("PurchaseRequest", { requesterId }),
-    );
+    const scope = resolveOwnAllScope(user, ownPermission, allPermission);
 
-    if (!canUpdatePurchaseRequest) {
+    if (scope.mode === "own" && requesterId !== user.id) {
       throwHttpError(
         HttpStatus.FORBIDDEN,
         "You do not have permission for this action",
       );
     }
+
+    if (scope.mode === "all" && scope.businessAccountId != null) {
+      const inBusinessAccount =
+        await this.purchaseRequestsRepository.requesterHasActiveMembership(
+          requesterId,
+          scope.businessAccountId,
+        );
+
+      if (!inBusinessAccount) {
+        throwHttpError(
+          HttpStatus.FORBIDDEN,
+          "You do not have permission for this action",
+        );
+      }
+    }
+
+    return scope;
   }
 
-  private resolveBuyerBusinessAccountId(user: AuthenticatedUser) {
-    const membership = user.businessMemberships.find(
-      (item) => item.isActive === true,
-    );
-
-    return membership?.businessAccountId ?? null;
+  private resolveBuyerBusinessAccountId(
+    user: AuthenticatedUser,
+    permission: string,
+  ) {
+    return resolveBusinessAccountIdForPermission(user, permission);
   }
 
-  async addItem(userId: number, dto: AddPurchaseRequestItemDto) {
+  async addItem(user: AuthenticatedUser, dto: AddPurchaseRequestItemDto) {
     const inventory = await this.inventoriesRepository.findInventoryById(
       dto.storeInventoryId,
     );
@@ -97,6 +112,32 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    const buyerBusinessAccountId = this.resolveBuyerBusinessAccountId(
+      user,
+      "seller.purchase-requests.create",
+    );
+
+    if (buyerBusinessAccountId === inventory.businessAccountId) {
+      throwHttpError(
+        HttpStatus.BAD_REQUEST,
+        "Cannot add inventory from the active buyer business account",
+        "storeInventoryId",
+      );
+    }
+
+    if (inventory.isActive !== true || inventory.visible !== true) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Inventory not found");
+    }
+
+    if (inventory.minOrderQty != null && dto.qty < inventory.minOrderQty) {
+      throwHttpError(
+        HttpStatus.CONFLICT,
+        "Quantity is below min_order_qty",
+        "qty",
+      );
+    }
+
+    const userId = user.id;
     const activeReservationRows =
       await this.purchaseRequestsRepository.findActiveReservationRows(
         userId,
@@ -196,7 +237,12 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
     }
 
-    this.assertPurchaseRequestCasl(user, request.requesterId, Action.Update);
+    await this.assertPurchaseRequestScope(
+      user,
+      request.requesterId,
+      "seller.purchase-requests.cancel.own",
+      "seller.purchase-requests.cancel.all",
+    );
 
     if (request.status !== "new") {
       throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
@@ -207,7 +253,6 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
         await this.purchaseRequestsRepository.deleteItemForOpenRequest(
           item.id,
           item.purchaseRequestId,
-          request.requesterId,
           tx,
         );
 
@@ -250,11 +295,12 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getActive(userId: number) {
-    return (
-      (await this.purchaseRequestsRepository.findActiveWithItemsByRequester(
+    const active =
+      await this.purchaseRequestsRepository.findActiveWithItemsByRequester(
         userId,
-      )) ?? null
-    );
+      );
+
+    return active ? withIsOwn(active, userId) : null;
   }
 
   async confirm(user: AuthenticatedUser, id: number) {
@@ -267,7 +313,12 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    this.assertPurchaseRequestCasl(user, request.requesterId, Action.Update);
+    const scope = await this.assertPurchaseRequestScope(
+      user,
+      request.requesterId,
+      "seller.purchase-requests.confirm.own",
+      "seller.purchase-requests.confirm.all",
+    );
 
     if (
       request.status !== "new" ||
@@ -288,8 +339,14 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.BAD_REQUEST, "Purchase request has no items");
     }
 
+    const buyerBusinessAccountId =
+      scope.businessAccountId ??
+      this.resolveBuyerBusinessAccountId(
+        user,
+        "seller.purchase-requests.confirm.own",
+      );
+
     return this.purchaseRequestsRepository.transaction(async (tx) => {
-      const buyerBusinessAccountId = this.resolveBuyerBusinessAccountId(user);
       if (buyerBusinessAccountId != null && request.businessAccountId != null) {
         const creditDecision =
           await this.tradeNetworkService.prepareCreditPurchase(
@@ -328,20 +385,25 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
         },
         tx,
       );
+      const invoiceItems: Awaited<
+        ReturnType<PurchaseRequestsRepository["createInvoiceItem"]>
+      >[] = [];
 
       for (const item of items) {
-        await this.purchaseRequestsRepository.createInvoiceItem(
-          {
-            invoiceId: invoice.id,
-            productId: item.productId,
-            storeInventoryId: item.storeInventoryId,
-            description: null,
-            qty: item.qty,
-            unitPrice: item.price,
-            total: item.total,
-          },
-          tx,
-        );
+        const invoiceItem =
+          await this.purchaseRequestsRepository.createInvoiceItem(
+            {
+              invoiceId: invoice.id,
+              productId: item.productId,
+              storeInventoryId: item.storeInventoryId,
+              description: null,
+              qty: item.qty,
+              unitPrice: item.price,
+              total: item.total,
+            },
+            tx,
+          );
+        invoiceItems.push(invoiceItem);
 
         if (item.storeInventoryId == null) {
           throwHttpError(HttpStatus.CONFLICT, "Inventory linkage missing");
@@ -381,7 +443,7 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
 
       await this.purchaseRequestsRepository.setRequestConfirmed(request.id, tx);
 
-      return invoice;
+      return { invoice, items: invoiceItems };
     });
   }
 
@@ -392,7 +454,12 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");
     }
 
-    this.assertPurchaseRequestCasl(user, request.requesterId, Action.Update);
+    await this.assertPurchaseRequestScope(
+      user,
+      request.requesterId,
+      "seller.purchase-requests.cancel.own",
+      "seller.purchase-requests.cancel.all",
+    );
 
     if (request.status !== "new") {
       throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");

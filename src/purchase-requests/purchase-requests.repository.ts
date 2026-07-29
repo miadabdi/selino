@@ -116,6 +116,7 @@ export class PurchaseRequestsRepository extends AbstractRepository {
         purchaseRequest: {
           columns: {
             requesterId: true,
+            businessAccountId: true,
             status: true,
           },
         },
@@ -126,7 +127,6 @@ export class PurchaseRequestsRepository extends AbstractRepository {
   async deleteItemForOpenRequest(
     itemId: number,
     purchaseRequestId: number,
-    requesterId: number,
     txContext: TXContext = this.db,
   ) {
     const [removed] = await txContext
@@ -142,7 +142,6 @@ export class PurchaseRequestsRepository extends AbstractRepository {
               .where(
                 and(
                   eq(purchaseRequests.id, purchaseRequestId),
-                  eq(purchaseRequests.requesterId, requesterId),
                   eq(purchaseRequests.status, "new"),
                 ),
               ),
@@ -203,6 +202,24 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     });
   }
 
+  async requesterHasActiveMembership(
+    requesterId: number,
+    businessAccountId: number,
+    txContext: TXContext = this.db,
+  ) {
+    const membership = await txContext.query.businessMembers.findFirst({
+      columns: { id: true },
+      where: (table) =>
+        and(
+          eq(table.userId, requesterId),
+          eq(table.businessAccountId, businessAccountId),
+          eq(table.isActive, true),
+        ),
+    });
+
+    return membership != null;
+  }
+
   listItemsByRequestId(
     purchaseRequestId: number,
     txContext: TXContext = this.db,
@@ -220,8 +237,12 @@ export class PurchaseRequestsRepository extends AbstractRepository {
   async createInvoiceItem(
     data: NewInvoiceItem,
     txContext: TXContext = this.db,
-  ): Promise<void> {
-    await txContext.insert(invoiceItems).values(data);
+  ) {
+    const [created] = await txContext
+      .insert(invoiceItems)
+      .values(data)
+      .returning();
+    return created;
   }
 
   async setRequestConfirmed(

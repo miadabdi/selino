@@ -51,17 +51,17 @@ export class OtpService {
       txContext,
     );
 
-    await this.notificationService.send(
-      {
-        channel: NotificationChannel.SMS,
-        destination: phone,
-        type: "otp",
-        body: `Your Selino verification code is: ${code}`,
-        userId: userId ?? undefined,
-        metadata: { code },
-      },
-      txContext,
-    );
+    // await this.notificationService.send(
+    //   {
+    //     channel: NotificationChannel.SMS,
+    //     destination: phone,
+    //     type: "otp",
+    //     body: `Your Selino verification code is: ${code}`,
+    //     userId: userId ?? undefined,
+    //     metadata: { code },
+    //   },
+    //   txContext,
+    // );
   }
 
   /**

@@ -1,5 +1,10 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
 import type { AuthenticatedUser } from "../auth/interfaces/index";
+import {
+  assertBusinessPermission,
+  findMembershipWithPermission,
+  resolveBusinessAccountIdForPermission,
+} from "../auth/permissions";
 import { throwHttpError } from "../common/http-error";
 import type { TXContext } from "../database/database.types";
 import { InventoriesRepository } from "../inventories/inventories.repository";
@@ -19,44 +24,33 @@ export class TradeNetworkService {
     private readonly storeInventoryTransactionsRepository: StoreInventoryTransactionsRepository,
   ) {}
 
-  private resolveBuyerBusinessAccountId(user: AuthenticatedUser) {
-    const membership = user.businessMemberships.find(
-      (item) => item.isActive === true,
+  private resolveBuyerBusinessAccountId(
+    user: AuthenticatedUser,
+    permission: string,
+  ) {
+    const businessAccountId = resolveBusinessAccountIdForPermission(
+      user,
+      permission,
     );
 
-    if (!membership) {
+    if (businessAccountId == null) {
       throwHttpError(
         HttpStatus.FORBIDDEN,
         "Active business membership is required",
       );
     }
 
-    return membership.businessAccountId;
-  }
-
-  private async assertActiveMembership(
-    user: AuthenticatedUser,
-    businessAccountId: number,
-  ) {
-    const membership =
-      await this.repository.findActiveMembershipForBusinessAccount(
-        user.id,
-        businessAccountId,
-      );
-
-    if (!membership && user.isAdmin !== true) {
-      throwHttpError(
-        HttpStatus.FORBIDDEN,
-        "Active business membership is required",
-      );
-    }
+    return businessAccountId;
   }
 
   async searchOffers(
     user: AuthenticatedUser,
     query: SearchTradeOffersQueryDto,
   ) {
-    const buyerBusinessAccountId = this.resolveBuyerBusinessAccountId(user);
+    const buyerBusinessAccountId = this.resolveBuyerBusinessAccountId(
+      user,
+      "seller.inventory.read",
+    );
 
     return this.repository.searchOffers(buyerBusinessAccountId, query);
   }
@@ -72,7 +66,11 @@ export class TradeNetworkService {
       );
     }
 
-    await this.assertActiveMembership(user, dto.buyerBusinessAccountId);
+    assertBusinessPermission(
+      user,
+      dto.buyerBusinessAccountId,
+      "manager.agreements.create",
+    );
 
     return this.repository.transaction(async (tx) => {
       const agreement = await this.repository.createAgreement(
@@ -115,24 +113,27 @@ export class TradeNetworkService {
       throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
     }
 
-    const membership = user.businessMemberships.find(
-      (item) =>
-        item.isActive &&
-        (item.businessAccountId === agreement.buyerBusinessAccountId ||
-          item.businessAccountId === agreement.supplierBusinessAccountId),
+    const membership = findMembershipWithPermission(
+      user,
+      "manager.agreements.sign",
     );
+    const canSignForBuyer =
+      user.isAdmin === true ||
+      user.permissions.includes("*") ||
+      membership?.businessAccountId === agreement.buyerBusinessAccountId;
+    const canSignForSupplier =
+      user.isAdmin === true ||
+      user.permissions.includes("*") ||
+      membership?.businessAccountId === agreement.supplierBusinessAccountId;
 
-    if (!membership && user.isAdmin !== true) {
+    if (!canSignForBuyer && !canSignForSupplier) {
       throwHttpError(
         HttpStatus.FORBIDDEN,
         "Only agreement parties can sign this agreement",
       );
     }
 
-    const party =
-      membership?.businessAccountId === agreement.supplierBusinessAccountId
-        ? "supplier"
-        : "buyer";
+    const party = canSignForSupplier && !canSignForBuyer ? "supplier" : "buyer";
     const businessAccountId =
       party === "buyer"
         ? agreement.buyerBusinessAccountId
@@ -178,7 +179,11 @@ export class TradeNetworkService {
       throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
     }
 
-    await this.assertActiveMembership(user, agreement.buyerBusinessAccountId);
+    assertBusinessPermission(
+      user,
+      agreement.buyerBusinessAccountId,
+      "manager.agreements.activate",
+    );
 
     if (!agreement.buyerSignedAt || !agreement.supplierSignedAt) {
       throwHttpError(
@@ -220,7 +225,11 @@ export class TradeNetworkService {
       throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
     }
 
-    await this.assertActiveMembership(user, agreement.buyerBusinessAccountId);
+    assertBusinessPermission(
+      user,
+      agreement.buyerBusinessAccountId,
+      "manager.agreements.suspend",
+    );
 
     return this.repository.transaction(async (tx) => {
       const updated = await this.repository.setAgreementStatus(
@@ -372,7 +381,10 @@ export class TradeNetworkService {
   }
 
   async listPendingApprovalRequests(user: AuthenticatedUser) {
-    const ownerBusinessAccountId = this.resolveBuyerBusinessAccountId(user);
+    const ownerBusinessAccountId = this.resolveBuyerBusinessAccountId(
+      user,
+      "manager.credit-approval-requests.read",
+    );
     return this.repository.listPendingApprovalRequestsForOwner(
       ownerBusinessAccountId,
     );
@@ -394,9 +406,10 @@ export class TradeNetworkService {
       throwHttpError(HttpStatus.CONFLICT, "Credit approval request is closed");
     }
 
-    await this.assertActiveMembership(
+    assertBusinessPermission(
       user,
       approvalRequest.ownerBusinessAccountId,
+      "manager.credit-approval-requests.approve",
     );
 
     const request = approvalRequest.purchaseRequest;
@@ -509,9 +522,10 @@ export class TradeNetworkService {
       throwHttpError(HttpStatus.CONFLICT, "Credit approval request is closed");
     }
 
-    await this.assertActiveMembership(
+    assertBusinessPermission(
       user,
       approvalRequest.ownerBusinessAccountId,
+      "manager.credit-approval-requests.reject",
     );
 
     const request = approvalRequest.purchaseRequest;
@@ -574,7 +588,11 @@ export class TradeNetworkService {
       throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
     }
 
-    await this.assertActiveMembership(user, agreement.buyerBusinessAccountId);
+    assertBusinessPermission(
+      user,
+      agreement.buyerBusinessAccountId,
+      "manager.agreements.settlements.create",
+    );
 
     const now = new Date();
     const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);

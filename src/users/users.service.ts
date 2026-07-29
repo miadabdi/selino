@@ -252,6 +252,10 @@ export class UsersService {
       return "manager";
     }
 
+    if (membershipRoles.includes("seller_manager")) {
+      return "seller_manager";
+    }
+
     if (membershipRoles.includes("seller")) {
       return "seller";
     }

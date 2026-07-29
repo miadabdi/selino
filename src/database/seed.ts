@@ -1,7 +1,7 @@
 import { config } from "dotenv";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, notInArray, sql } from "drizzle-orm";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import {
@@ -40,126 +40,250 @@ config();
 type SeedDb = PostgresJsDatabase<typeof schema>;
 
 const permissionKeys = [
+  "*",
   "seller.dashboard.overview",
-  "seller.purchase-requests.read",
-  "seller.purchase-requests.write",
-  "seller.invoices.active.read",
-  "seller.invoices.history.read",
-  "seller.credit-approvals.read",
-  "seller.credit-approvals.write",
+  "seller.purchase-requests.page",
+  "seller.purchase-requests.read.own",
+  "seller.purchase-requests.read.all",
+  "seller.purchase-requests.create",
+  "seller.purchase-requests.cancel.own",
+  "seller.purchase-requests.cancel.all",
+  "seller.purchase-requests.confirm.own",
+  "seller.purchase-requests.confirm.all",
+  "seller.inventory.read",
+  "seller.inventory.create",
+  "seller.inventory.update",
+  "seller.inventory.restock",
+  "seller.inventory.transactions.read",
+  "seller.invoices.active.page",
+  "seller.invoices.active.read.own",
+  "seller.invoices.active.read.all",
+  "seller.invoices.history.page",
+  "seller.invoices.history.read.own",
+  "seller.invoices.history.read.all",
+  "seller.team.read",
+  "seller.team.manage",
   "manager.dashboard.overview",
   "manager.credit.read",
+  "manager.credit.manage",
   "manager.orders.track",
   "manager.suppliers.read",
+  "manager.suppliers.manage",
   "manager.reports.read",
   "manager.support.read",
-  "collector.dashboard.overview",
-  "collector.products.read",
-  "collector.products.write",
+  "manager.agreements.read",
+  "manager.agreements.create",
+  "manager.agreements.update",
+  "manager.agreements.sign",
+  "manager.agreements.activate",
+  "manager.agreements.suspend",
+  "manager.agreements.settlements.create",
+  "manager.credit-approval-requests.read",
+  "manager.credit-approval-requests.approve",
+  "manager.credit-approval-requests.reject",
 ] as const;
 
 const featureKeys = [
   "dashboard",
   "purchase_requests",
   "invoices",
+  "inventory",
   "credit",
+  "agreements",
+  "credit_approval_requests",
   "orders",
   "suppliers",
   "reports",
   "support",
-  "products",
+  "team",
 ] as const;
 
 const rolePermissionKeys: Record<string, readonly string[]> = {
+  admin: ["*"],
   manager: [
     "manager.dashboard.overview",
     "manager.credit.read",
+    "manager.credit.manage",
     "manager.orders.track",
     "manager.suppliers.read",
+    "manager.suppliers.manage",
     "manager.reports.read",
     "manager.support.read",
-    "seller.purchase-requests.read",
-    "seller.purchase-requests.write",
+    "manager.agreements.read",
+    "manager.agreements.create",
+    "manager.agreements.update",
+    "manager.agreements.sign",
+    "manager.agreements.activate",
+    "manager.agreements.suspend",
+    "manager.agreements.settlements.create",
+    "manager.credit-approval-requests.read",
+    "manager.credit-approval-requests.approve",
+    "manager.credit-approval-requests.reject",
   ],
   seller: [
     "seller.dashboard.overview",
-    "seller.purchase-requests.read",
-    "seller.purchase-requests.write",
-    "seller.invoices.active.read",
-    "seller.invoices.history.read",
-    "seller.credit-approvals.read",
-    "seller.credit-approvals.write",
+    "seller.purchase-requests.page",
+    "seller.purchase-requests.read.own",
+    "seller.purchase-requests.create",
+    "seller.purchase-requests.cancel.own",
+    "seller.purchase-requests.confirm.own",
+    "seller.inventory.read",
+    "seller.invoices.active.page",
+    "seller.invoices.active.read.own",
+    "seller.invoices.history.page",
+    "seller.invoices.history.read.own",
   ],
-  collector: [
-    "collector.dashboard.overview",
-    "collector.products.read",
-    "collector.products.write",
+  seller_manager: [
+    "seller.dashboard.overview",
+    "seller.purchase-requests.page",
+    "seller.purchase-requests.read.own",
+    "seller.purchase-requests.read.all",
+    "seller.purchase-requests.create",
+    "seller.purchase-requests.cancel.own",
+    "seller.purchase-requests.cancel.all",
+    "seller.purchase-requests.confirm.own",
+    "seller.purchase-requests.confirm.all",
+    "seller.inventory.read",
+    "seller.inventory.create",
+    "seller.inventory.update",
+    "seller.inventory.restock",
+    "seller.inventory.transactions.read",
+    "seller.invoices.active.page",
+    "seller.invoices.active.read.own",
+    "seller.invoices.active.read.all",
+    "seller.invoices.history.page",
+    "seller.invoices.history.read.own",
+    "seller.invoices.history.read.all",
+    "seller.team.read",
+    "seller.team.manage",
   ],
+  collector: [],
 };
 
 const featurePermissionKeys: Record<string, readonly string[]> = {
-  dashboard: [
-    "seller.dashboard.overview",
-    "manager.dashboard.overview",
-    "collector.dashboard.overview",
-  ],
+  dashboard: ["*", "seller.dashboard.overview", "manager.dashboard.overview"],
   purchase_requests: [
-    "seller.purchase-requests.read",
-    "seller.purchase-requests.write",
+    "seller.purchase-requests.page",
+    "seller.purchase-requests.read.own",
+    "seller.purchase-requests.read.all",
+    "seller.purchase-requests.create",
+    "seller.purchase-requests.cancel.own",
+    "seller.purchase-requests.cancel.all",
+    "seller.purchase-requests.confirm.own",
+    "seller.purchase-requests.confirm.all",
   ],
-  invoices: ["seller.invoices.active.read", "seller.invoices.history.read"],
-  credit: [
-    "manager.credit.read",
-    "seller.credit-approvals.read",
-    "seller.credit-approvals.write",
+  invoices: [
+    "seller.invoices.active.page",
+    "seller.invoices.active.read.own",
+    "seller.invoices.active.read.all",
+    "seller.invoices.history.page",
+    "seller.invoices.history.read.own",
+    "seller.invoices.history.read.all",
+  ],
+  inventory: [
+    "seller.inventory.read",
+    "seller.inventory.create",
+    "seller.inventory.update",
+    "seller.inventory.restock",
+    "seller.inventory.transactions.read",
+  ],
+  credit: ["manager.credit.read", "manager.credit.manage"],
+  agreements: [
+    "manager.agreements.read",
+    "manager.agreements.create",
+    "manager.agreements.update",
+    "manager.agreements.sign",
+    "manager.agreements.activate",
+    "manager.agreements.suspend",
+    "manager.agreements.settlements.create",
+  ],
+  credit_approval_requests: [
+    "manager.credit-approval-requests.read",
+    "manager.credit-approval-requests.approve",
+    "manager.credit-approval-requests.reject",
   ],
   orders: ["manager.orders.track"],
-  suppliers: ["manager.suppliers.read"],
+  suppliers: ["manager.suppliers.read", "manager.suppliers.manage"],
   reports: ["manager.reports.read"],
   support: ["manager.support.read"],
-  products: ["collector.products.read", "collector.products.write"],
+  team: ["seller.team.read", "seller.team.manage"],
 };
 
 const packageFeatureKeys: Record<string, readonly string[]> = {
-  starter: ["dashboard", "purchase_requests", "invoices", "products"],
+  starter: ["dashboard", "purchase_requests", "invoices", "inventory"],
   pro: featureKeys,
 };
 
 const roleDescriptions: Record<string, string> = {
+  admin: "مدیر کل سیستم",
   manager: "مدیر کسب و کار",
   seller: "فروشنده",
+  seller_manager: "مدیر فروشنده",
   collector: "جمع آورنده محصول",
 };
 
 const permissionDescriptions: Record<string, string> = {
+  "*": "دسترسی کامل سیستم",
   "seller.dashboard.overview": "مشاهده داشبورد فروشنده",
-  "seller.purchase-requests.read": "مشاهده درخواست های خرید فروشنده",
-  "seller.purchase-requests.write": "ایجاد و ویرایش درخواست های خرید فروشنده",
-  "seller.invoices.active.read": "مشاهده فاکتورهای فعال فروشنده",
-  "seller.invoices.history.read": "مشاهده تاریخچه فاکتورهای فروشنده",
-  "seller.credit-approvals.read": "مشاهده درخواست های خرید مازاد بر اعتبار",
-  "seller.credit-approvals.write": "تایید یا رد خریدهای مازاد بر اعتبار",
+  "seller.purchase-requests.page": "مشاهده صفحه درخواست های خرید فروشنده",
+  "seller.purchase-requests.read.own": "مشاهده درخواست های خرید خود فروشنده",
+  "seller.purchase-requests.read.all":
+    "مشاهده همه درخواست های خرید کسب و کار فروشنده",
+  "seller.purchase-requests.create": "ایجاد درخواست خرید فروشنده",
+  "seller.purchase-requests.cancel.own": "لغو درخواست خرید خود فروشنده",
+  "seller.purchase-requests.cancel.all":
+    "لغو همه درخواست های خرید کسب و کار فروشنده",
+  "seller.purchase-requests.confirm.own": "تایید درخواست خرید خود فروشنده",
+  "seller.purchase-requests.confirm.all":
+    "تایید همه درخواست های خرید کسب و کار فروشنده",
+  "seller.inventory.read": "مشاهده موجودی فروشنده",
+  "seller.inventory.create": "ایجاد موجودی فروشنده",
+  "seller.inventory.update": "ویرایش موجودی فروشنده",
+  "seller.inventory.restock": "افزایش موجودی فروشنده",
+  "seller.inventory.transactions.read": "مشاهده گردش موجودی فروشنده",
+  "seller.invoices.active.page": "مشاهده صفحه فاکتورهای فعال فروشنده",
+  "seller.invoices.active.read.own": "مشاهده فاکتورهای فعال خود فروشنده",
+  "seller.invoices.active.read.all":
+    "مشاهده همه فاکتورهای فعال کسب و کار فروشنده",
+  "seller.invoices.history.page": "مشاهده صفحه تاریخچه فاکتورهای فروشنده",
+  "seller.invoices.history.read.own": "مشاهده تاریخچه فاکتورهای خود فروشنده",
+  "seller.invoices.history.read.all":
+    "مشاهده همه تاریخچه فاکتورهای کسب و کار فروشنده",
+  "seller.team.read": "مشاهده تیم فروشنده",
+  "seller.team.manage": "مدیریت تیم فروشنده",
   "manager.dashboard.overview": "مشاهده داشبورد مدیر",
   "manager.credit.read": "مشاهده اعتبار",
+  "manager.credit.manage": "مدیریت اعتبار",
   "manager.orders.track": "پیگیری سفارش ها",
   "manager.suppliers.read": "مشاهده تامین کنندگان",
+  "manager.suppliers.manage": "مدیریت تامین کنندگان",
   "manager.reports.read": "مشاهده گزارش ها",
   "manager.support.read": "دسترسی به پشتیبانی",
-  "collector.dashboard.overview": "مشاهده داشبورد جمع آورنده محصول",
-  "collector.products.read": "مشاهده محصولات",
-  "collector.products.write": "ثبت و ویرایش محصولات",
+  "manager.agreements.read": "مشاهده قراردادهای اعتباری",
+  "manager.agreements.create": "ایجاد قرارداد اعتباری",
+  "manager.agreements.update": "ویرایش قرارداد اعتباری",
+  "manager.agreements.sign": "امضای قرارداد اعتباری",
+  "manager.agreements.activate": "فعال سازی قرارداد اعتباری",
+  "manager.agreements.suspend": "تعلیق قرارداد اعتباری",
+  "manager.agreements.settlements.create": "ایجاد تسویه قرارداد اعتباری",
+  "manager.credit-approval-requests.read": "مشاهده درخواست های تایید اعتبار",
+  "manager.credit-approval-requests.approve": "تایید درخواست اعتبار",
+  "manager.credit-approval-requests.reject": "رد درخواست اعتبار",
 };
 
 const featureNames: Record<string, string> = {
   dashboard: "داشبورد",
   purchase_requests: "درخواست های خرید",
   invoices: "فاکتورها",
+  inventory: "موجودی",
   credit: "اعتبار",
+  agreements: "قراردادهای اعتباری",
+  credit_approval_requests: "درخواست های تایید اعتبار",
   orders: "سفارش ها",
   suppliers: "تامین کنندگان",
   reports: "گزارش ها",
   support: "پشتیبانی",
-  products: "محصولات",
+  team: "تیم",
 };
 
 const packageNames: Record<string, string> = {
@@ -167,7 +291,22 @@ const packageNames: Record<string, string> = {
   pro: "بسته حرفه ای",
 };
 
-const seedUsers = [
+type SeedUser = {
+  phone: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  isAdmin?: boolean;
+};
+
+const seedUsers: readonly SeedUser[] = [
+  {
+    phone: "+989120000000",
+    email: "admin@example.com",
+    firstName: "ادمین",
+    lastName: "سلینو",
+    isAdmin: true,
+  },
   {
     phone: "+989120000001",
     email: "modir@example.com",
@@ -179,6 +318,12 @@ const seedUsers = [
     email: "seller@example.com",
     firstName: "سارا",
     lastName: "رضایی",
+  },
+  {
+    phone: "+989120000004",
+    email: "seller-manager@example.com",
+    firstName: "نیلوفر",
+    lastName: "محمدی",
   },
   {
     phone: "+989120000003",
@@ -203,8 +348,10 @@ const seedSupplierBusinessAccount = {
 };
 
 const seedMemberships = [
+  { phone: "+989120000000", role: "admin" },
   { phone: "+989120000001", role: "manager" },
   { phone: "+989120000002", role: "seller" },
+  { phone: "+989120000004", role: "seller_manager" },
   { phone: "+989120000003", role: "collector" },
 ] as const;
 
@@ -369,10 +516,7 @@ async function upsertPackage(db: SeedDb, key: string) {
   return created;
 }
 
-async function upsertUser(
-  db: SeedDb,
-  data: (typeof seedUsers)[number],
-): Promise<User> {
+async function upsertUser(db: SeedDb, data: SeedUser): Promise<User> {
   const existing = await db.query.users.findFirst({
     where: (table) => eq(table.phone, data.phone),
   });
@@ -384,6 +528,7 @@ async function upsertUser(
         email: data.email,
         firstName: data.firstName,
         lastName: data.lastName,
+        isAdmin: data.isAdmin ?? false,
         isPhoneVerified: true,
         isEmailVerified: true,
         updatedAt: new Date(),
@@ -401,6 +546,7 @@ async function upsertUser(
       email: data.email,
       firstName: data.firstName,
       lastName: data.lastName,
+      isAdmin: data.isAdmin ?? false,
       isPhoneVerified: true,
       isEmailVerified: true,
     })
@@ -837,6 +983,24 @@ async function main() {
     rolePermissionKeys,
   )) {
     const role = roleByName.get(roleName)!;
+    const allowedPermissionIds = rolePermissionsForRole.map(
+      (permissionKey) => permissionByName.get(permissionKey)!.id,
+    );
+
+    if (allowedPermissionIds.length === 0) {
+      await db
+        .delete(rolePermissions)
+        .where(eq(rolePermissions.roleId, role.id));
+    } else {
+      await db
+        .delete(rolePermissions)
+        .where(
+          and(
+            eq(rolePermissions.roleId, role.id),
+            notInArray(rolePermissions.permissionId, allowedPermissionIds),
+          ),
+        );
+    }
 
     for (const permissionKey of rolePermissionsForRole) {
       await ensureRolePermission(
@@ -851,6 +1015,24 @@ async function main() {
     featurePermissionKeys,
   )) {
     const feature = featureByKey.get(featureKey)!;
+    const allowedPermissionIds = permissionsForFeature.map(
+      (permissionKey) => permissionByName.get(permissionKey)!.id,
+    );
+
+    if (allowedPermissionIds.length === 0) {
+      await db
+        .delete(featurePermissions)
+        .where(eq(featurePermissions.featureId, feature.id));
+    } else {
+      await db
+        .delete(featurePermissions)
+        .where(
+          and(
+            eq(featurePermissions.featureId, feature.id),
+            notInArray(featurePermissions.permissionId, allowedPermissionIds),
+          ),
+        );
+    }
 
     for (const permissionKey of permissionsForFeature) {
       await ensureFeaturePermission(
@@ -865,6 +1047,24 @@ async function main() {
     packageFeatureKeys,
   )) {
     const packageRecord = packageByKey.get(packageKey)!;
+    const allowedFeatureIds = featuresForPackage.map(
+      (featureKey) => featureByKey.get(featureKey)!.id,
+    );
+
+    if (allowedFeatureIds.length === 0) {
+      await db
+        .delete(packageFeatures)
+        .where(eq(packageFeatures.packageId, packageRecord.id));
+    } else {
+      await db
+        .delete(packageFeatures)
+        .where(
+          and(
+            eq(packageFeatures.packageId, packageRecord.id),
+            notInArray(packageFeatures.featureId, allowedFeatureIds),
+          ),
+        );
+    }
 
     for (const featureKey of featuresForPackage) {
       await ensurePackageFeature(

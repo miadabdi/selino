@@ -9,6 +9,11 @@ import { ConfigService } from "@nestjs/config";
 import { NotificationChannel } from "../notification/notification.enums";
 import { NotificationService } from "../notification/notification.service";
 import type { AuthenticatedUser } from "../auth/interfaces/index";
+import {
+  assertBusinessPermission,
+  findMembershipWithPermission,
+  resolveBusinessAccountIdForPermission,
+} from "../auth/permissions";
 import { throwHttpError } from "../common/http-error";
 import type { TXContext } from "../database/database.types";
 import { InventoriesRepository } from "../inventories/inventories.repository";
@@ -58,69 +63,33 @@ export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
     if (this.expiryTimer) clearInterval(this.expiryTimer);
   }
 
-  private resolveBuyerBusinessAccountId(user: AuthenticatedUser) {
-    const membership = user.businessMemberships.find(
-      (item) => item.isActive === true,
+  private resolveBuyerBusinessAccountId(
+    user: AuthenticatedUser,
+    permission: string,
+  ) {
+    const businessAccountId = resolveBusinessAccountIdForPermission(
+      user,
+      permission,
     );
 
-    if (!membership) {
+    if (businessAccountId == null) {
       throwHttpError(
         HttpStatus.FORBIDDEN,
         "Active business membership is required",
       );
     }
 
-    return membership.businessAccountId;
-  }
-
-  private async assertActiveMembership(
-    user: AuthenticatedUser,
-    businessAccountId: number,
-  ) {
-    const membership =
-      await this.repository.findActiveMembershipForBusinessAccount(
-        user.id,
-        businessAccountId,
-      );
-
-    if (!membership && user.isAdmin !== true) {
-      throwHttpError(
-        HttpStatus.FORBIDDEN,
-        "Active business membership is required",
-      );
-    }
-  }
-
-  private assertSupplierApprovalPermission(
-    user: AuthenticatedUser,
-    businessAccountId: number,
-    permission:
-      | "seller.credit-approvals.read"
-      | "seller.credit-approvals.write",
-  ) {
-    if (user.isAdmin === true) {
-      return;
-    }
-    const membership = user.businessMemberships.find(
-      (item) =>
-        item.isActive &&
-        item.businessAccountId === businessAccountId &&
-        item.role === "seller" &&
-        item.permissions.includes(permission),
-    );
-    if (!membership) {
-      throwHttpError(
-        HttpStatus.FORBIDDEN,
-        "Supplier credit approval permission is required",
-      );
-    }
+    return businessAccountId;
   }
 
   async searchOffers(
     user: AuthenticatedUser,
     query: SearchTradeOffersQueryDto,
   ) {
-    const buyerBusinessAccountId = this.resolveBuyerBusinessAccountId(user);
+    const buyerBusinessAccountId = this.resolveBuyerBusinessAccountId(
+      user,
+      "seller.inventory.read",
+    );
 
     return this.repository.searchOffers(buyerBusinessAccountId, query);
   }
@@ -136,7 +105,11 @@ export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    await this.assertActiveMembership(user, dto.buyerBusinessAccountId);
+    assertBusinessPermission(
+      user,
+      dto.buyerBusinessAccountId,
+      "manager.agreements.create",
+    );
 
     return this.repository.transaction(async (tx) => {
       const agreement = await this.repository.createAgreement(
@@ -179,24 +152,27 @@ export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
     }
 
-    const membership = user.businessMemberships.find(
-      (item) =>
-        item.isActive &&
-        (item.businessAccountId === agreement.buyerBusinessAccountId ||
-          item.businessAccountId === agreement.supplierBusinessAccountId),
+    const membership = findMembershipWithPermission(
+      user,
+      "manager.agreements.sign",
     );
+    const canSignForBuyer =
+      user.isAdmin === true ||
+      user.permissions.includes("*") ||
+      membership?.businessAccountId === agreement.buyerBusinessAccountId;
+    const canSignForSupplier =
+      user.isAdmin === true ||
+      user.permissions.includes("*") ||
+      membership?.businessAccountId === agreement.supplierBusinessAccountId;
 
-    if (!membership && user.isAdmin !== true) {
+    if (!canSignForBuyer && !canSignForSupplier) {
       throwHttpError(
         HttpStatus.FORBIDDEN,
         "Only agreement parties can sign this agreement",
       );
     }
 
-    const party =
-      membership?.businessAccountId === agreement.supplierBusinessAccountId
-        ? "supplier"
-        : "buyer";
+    const party = canSignForSupplier && !canSignForBuyer ? "supplier" : "buyer";
     const businessAccountId =
       party === "buyer"
         ? agreement.buyerBusinessAccountId
@@ -242,7 +218,11 @@ export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
     }
 
-    await this.assertActiveMembership(user, agreement.buyerBusinessAccountId);
+    assertBusinessPermission(
+      user,
+      agreement.buyerBusinessAccountId,
+      "manager.agreements.activate",
+    );
 
     if (!agreement.buyerSignedAt || !agreement.supplierSignedAt) {
       throwHttpError(
@@ -284,7 +264,11 @@ export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
     }
 
-    await this.assertActiveMembership(user, agreement.buyerBusinessAccountId);
+    assertBusinessPermission(
+      user,
+      agreement.buyerBusinessAccountId,
+      "manager.agreements.suspend",
+    );
 
     return this.repository.transaction(async (tx) => {
       const updated = await this.repository.setAgreementStatus(
@@ -443,11 +427,10 @@ export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
     user: AuthenticatedUser,
     ownerBusinessAccountId: number,
   ) {
-    await this.assertActiveMembership(user, ownerBusinessAccountId);
-    this.assertSupplierApprovalPermission(
+    assertBusinessPermission(
       user,
       ownerBusinessAccountId,
-      "seller.credit-approvals.read",
+      "manager.credit-approval-requests.read",
     );
     return this.repository.listPendingApprovalRequestsForOwner(
       ownerBusinessAccountId,
@@ -470,16 +453,11 @@ export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.CONFLICT, "Credit approval request is closed");
     }
 
-    await this.assertActiveMembership(
+    assertBusinessPermission(
       user,
       approvalRequest.ownerBusinessAccountId,
+      "manager.credit-approval-requests.approve",
     );
-    this.assertSupplierApprovalPermission(
-      user,
-      approvalRequest.ownerBusinessAccountId,
-      "seller.credit-approvals.write",
-    );
-
     if (approvalRequest.expiresAt <= new Date()) {
       throwHttpError(
         HttpStatus.CONFLICT,
@@ -637,16 +615,11 @@ export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.CONFLICT, "Credit approval request is closed");
     }
 
-    await this.assertActiveMembership(
+    assertBusinessPermission(
       user,
       approvalRequest.ownerBusinessAccountId,
+      "manager.credit-approval-requests.reject",
     );
-    this.assertSupplierApprovalPermission(
-      user,
-      approvalRequest.ownerBusinessAccountId,
-      "seller.credit-approvals.write",
-    );
-
     const invoice = approvalRequest.invoice;
     if (!invoice || invoice.status !== "pending_credit_approval") {
       throwHttpError(HttpStatus.CONFLICT, "Invoice is not pending approval");
@@ -745,7 +718,11 @@ export class TradeNetworkService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.NOT_FOUND, "Trade credit agreement not found");
     }
 
-    await this.assertActiveMembership(user, agreement.buyerBusinessAccountId);
+    assertBusinessPermission(
+      user,
+      agreement.buyerBusinessAccountId,
+      "manager.agreements.settlements.create",
+    );
 
     const now = new Date();
     const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);

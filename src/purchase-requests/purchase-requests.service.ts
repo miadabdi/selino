@@ -1,4 +1,3 @@
-import { subject } from "@casl/ability";
 import {
   HttpStatus,
   Injectable,
@@ -7,8 +6,12 @@ import {
   OnModuleInit,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Action, CaslAbilityFactory } from "../auth/casl/index";
 import type { AuthenticatedUser } from "../auth/interfaces/index";
+import {
+  assertBusinessPermission,
+  findMembershipWithPermission,
+  withIsOwn,
+} from "../auth/permissions";
 import { throwHttpError } from "../common/http-error";
 import { InventoriesRepository } from "../inventories/inventories.repository";
 import { StoreInventoryTransactionsRepository } from "../inventories/store-inventory-transactions.repository";
@@ -32,7 +35,6 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     private readonly purchaseRequestsRepository: PurchaseRequestsRepository,
     private readonly inventoriesRepository: InventoriesRepository,
     private readonly storeInventoryTransactionsRepository: StoreInventoryTransactionsRepository,
-    private readonly caslAbilityFactory: CaslAbilityFactory,
     private readonly configService: ConfigService,
     private readonly tradeNetworkService: TradeNetworkService,
     private readonly notificationService: NotificationService,
@@ -62,69 +64,96 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private assertPurchaseRequestCasl(
+  private resolvePurchaseRequestScope(
     user: AuthenticatedUser,
     buyerBusinessAccountId: number,
-    action: Action,
+    requesterId: number,
+    ownPermission: string,
+    allPermission: string,
   ) {
-    const ability = this.caslAbilityFactory.createForUser(user);
-    const canUpdatePurchaseRequest = ability.can(
-      action,
-      subject("PurchaseRequest", { buyerBusinessAccountId }),
-    );
-
-    if (!canUpdatePurchaseRequest) {
-      throwHttpError(
-        HttpStatus.FORBIDDEN,
-        "You do not have permission for this action",
-      );
+    if (user.isAdmin === true || user.permissions.includes("*")) {
+      return { mode: "all" as const, buyerBusinessAccountId };
     }
+
+    if (
+      findMembershipWithPermission(user, allPermission, buyerBusinessAccountId)
+    ) {
+      return { mode: "all" as const, buyerBusinessAccountId };
+    }
+
+    if (
+      requesterId === user.id &&
+      findMembershipWithPermission(user, ownPermission, buyerBusinessAccountId)
+    ) {
+      return { mode: "own" as const, buyerBusinessAccountId };
+    }
+
+    throwHttpError(
+      HttpStatus.FORBIDDEN,
+      "You do not have permission for this action",
+    );
   }
 
-  private assertActiveBusinessMembership(
+  private resolveListScope(
     user: AuthenticatedUser,
-    businessAccountId: number,
+    requestedBusinessAccountId?: number,
   ) {
-    const membership = user.businessMemberships.find(
-      (item) =>
-        item.isActive === true && item.businessAccountId === businessAccountId,
-    );
-    if (!membership && user.isAdmin !== true) {
-      throwHttpError(
-        HttpStatus.FORBIDDEN,
-        "Active buyer business membership is required",
-      );
-    }
-  }
-
-  private resolveSingleActiveBusinessAccountId(user: AuthenticatedUser) {
-    const memberships = user.businessMemberships.filter(
-      (item) => item.isActive === true,
-    );
-
-    if (memberships.length === 0) {
-      throwHttpError(
-        HttpStatus.FORBIDDEN,
-        "Active buyer business membership is required",
-      );
+    if (user.isAdmin === true || user.permissions.includes("*")) {
+      return {
+        buyerBusinessAccountId: requestedBusinessAccountId,
+        requesterId: undefined,
+      };
     }
 
-    if (memberships.length > 1) {
+    const matchingMemberships = user.businessMemberships.filter(
+      (membership) =>
+        membership.isActive &&
+        (requestedBusinessAccountId == null ||
+          membership.businessAccountId === requestedBusinessAccountId),
+    );
+    const allMemberships = matchingMemberships.filter((membership) =>
+      membership.permissions.includes("seller.purchase-requests.read.all"),
+    );
+    if (requestedBusinessAccountId == null && allMemberships.length > 1) {
       throwHttpError(
         HttpStatus.CONFLICT,
         "User has multiple active business memberships",
       );
     }
+    if (allMemberships[0]) {
+      return {
+        buyerBusinessAccountId: allMemberships[0].businessAccountId,
+        requesterId: undefined,
+      };
+    }
 
-    return memberships[0].businessAccountId;
+    const ownMemberships = matchingMemberships.filter((membership) =>
+      membership.permissions.includes("seller.purchase-requests.read.own"),
+    );
+    if (requestedBusinessAccountId == null && ownMemberships.length > 1) {
+      throwHttpError(
+        HttpStatus.CONFLICT,
+        "User has multiple active business memberships",
+      );
+    }
+    if (ownMemberships[0]) {
+      return {
+        buyerBusinessAccountId: ownMemberships[0].businessAccountId,
+        requesterId: user.id,
+      };
+    }
+
+    throwHttpError(
+      HttpStatus.FORBIDDEN,
+      "You do not have permission for this action",
+    );
   }
 
   async addItem(user: AuthenticatedUser, dto: AddPurchaseRequestItemDto) {
-    this.assertActiveBusinessMembership(user, dto.buyerBusinessAccountId);
-    this.assertPurchaseRequestCasl(
+    assertBusinessPermission(
       user,
       dto.buyerBusinessAccountId,
-      Action.Create,
+      "seller.purchase-requests.create",
     );
 
     const inventory = await this.inventoriesRepository.findInventoryById(
@@ -136,6 +165,26 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
         HttpStatus.NOT_FOUND,
         "Inventory not found",
         "storeInventoryId",
+      );
+    }
+
+    if (dto.buyerBusinessAccountId === inventory.businessAccountId) {
+      throwHttpError(
+        HttpStatus.BAD_REQUEST,
+        "Cannot add inventory from the active buyer business account",
+        "storeInventoryId",
+      );
+    }
+
+    if (inventory.isActive !== true || inventory.visible !== true) {
+      throwHttpError(HttpStatus.NOT_FOUND, "Inventory not found");
+    }
+
+    if (inventory.minOrderQty != null && dto.qty < inventory.minOrderQty) {
+      throwHttpError(
+        HttpStatus.CONFLICT,
+        "Quantity is below min_order_qty",
+        "qty",
       );
     }
 
@@ -238,11 +287,12 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.NOT_FOUND, "Purchase request item not found");
     }
 
-    this.assertActiveBusinessMembership(user, request.buyerBusinessAccountId);
-    this.assertPurchaseRequestCasl(
+    this.resolvePurchaseRequestScope(
       user,
       request.buyerBusinessAccountId,
-      Action.Update,
+      request.requesterId,
+      "seller.purchase-requests.cancel.own",
+      "seller.purchase-requests.cancel.all",
     );
 
     if (request.status !== "new") {
@@ -297,41 +347,35 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getActive(user: AuthenticatedUser, buyerBusinessAccountId: number) {
-    this.assertActiveBusinessMembership(user, buyerBusinessAccountId);
-    return (
-      (await this.purchaseRequestsRepository.findActiveWithItemsByRequester(
+    this.resolvePurchaseRequestScope(
+      user,
+      buyerBusinessAccountId,
+      user.id,
+      "seller.purchase-requests.read.own",
+      "seller.purchase-requests.read.all",
+    );
+    const active =
+      await this.purchaseRequestsRepository.findActiveWithItemsByRequester(
         user.id,
         buyerBusinessAccountId,
-      )) ?? null
-    );
+      );
+
+    return active ? withIsOwn(active, user.id) : null;
   }
 
-  list(user: AuthenticatedUser, query: ListPurchaseRequestsQueryDto) {
-    if (user.isAdmin === true) {
-      return this.purchaseRequestsRepository.listByBuyerBusiness(
-        query.buyerBusinessAccountId,
-        query.page,
-        query.limit,
-      );
-    }
-
-    const buyerBusinessAccountId =
-      this.resolveSingleActiveBusinessAccountId(user);
-    if (
-      query.buyerBusinessAccountId != null &&
-      query.buyerBusinessAccountId !== buyerBusinessAccountId
-    ) {
-      throwHttpError(
-        HttpStatus.FORBIDDEN,
-        "Active buyer business membership is required",
-      );
-    }
-
-    return this.purchaseRequestsRepository.listByBuyerBusiness(
-      buyerBusinessAccountId,
+  async list(user: AuthenticatedUser, query: ListPurchaseRequestsQueryDto) {
+    const scope = this.resolveListScope(user, query.buyerBusinessAccountId);
+    const result = await this.purchaseRequestsRepository.listByBuyerBusiness(
+      scope.buyerBusinessAccountId,
       query.page,
       query.limit,
+      scope.requesterId,
     );
+
+    return {
+      ...result,
+      items: result.items.map((item) => withIsOwn(item, user.id)),
+    };
   }
 
   async confirm(user: AuthenticatedUser, id: number) {
@@ -344,11 +388,12 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    this.assertActiveBusinessMembership(user, request.buyerBusinessAccountId);
-    this.assertPurchaseRequestCasl(
+    this.resolvePurchaseRequestScope(
       user,
       request.buyerBusinessAccountId,
-      Action.Update,
+      request.requesterId,
+      "seller.purchase-requests.confirm.own",
+      "seller.purchase-requests.confirm.all",
     );
 
     if (
@@ -396,9 +441,12 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
           );
         }
 
-        this.assertActiveBusinessMembership(
+        this.resolvePurchaseRequestScope(
           user,
           lockedRequest.buyerBusinessAccountId,
+          lockedRequest.requesterId,
+          "seller.purchase-requests.confirm.own",
+          "seller.purchase-requests.confirm.all",
         );
 
         const items =
@@ -597,11 +645,12 @@ export class PurchaseRequestsService implements OnModuleInit, OnModuleDestroy {
       throwHttpError(HttpStatus.NOT_FOUND, "Purchase request not found");
     }
 
-    this.assertActiveBusinessMembership(user, request.buyerBusinessAccountId);
-    this.assertPurchaseRequestCasl(
+    this.resolvePurchaseRequestScope(
       user,
       request.buyerBusinessAccountId,
-      Action.Update,
+      request.requesterId,
+      "seller.purchase-requests.cancel.own",
+      "seller.purchase-requests.cancel.all",
     );
 
     if (request.status !== "new") {

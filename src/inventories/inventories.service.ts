@@ -1,7 +1,6 @@
-import { subject } from "@casl/ability";
 import { HttpStatus, Injectable } from "@nestjs/common";
-import { Action, CaslAbilityFactory } from "../auth/casl/index";
 import type { AuthenticatedUser } from "../auth/interfaces/index";
+import { assertBusinessPermission } from "../auth/permissions";
 import { throwHttpError } from "../common/http-error";
 import { CreateInventoryDto } from "./dto/create-inventory.dto";
 import { RestockInventoryDto } from "./dto/restock-inventory.dto";
@@ -13,35 +12,19 @@ import { StoreInventoryTransactionsRepository } from "./store-inventory-transact
 export class InventoriesService {
   constructor(
     private readonly inventoriesRepository: InventoriesRepository,
-    private readonly caslAbilityFactory: CaslAbilityFactory,
     private readonly storeInventoryTransactionsRepository: StoreInventoryTransactionsRepository,
   ) {}
-
-  private assertInventoryCasl(
-    user: AuthenticatedUser,
-    action: Action,
-    businessAccountId: number,
-  ) {
-    const ability = this.caslAbilityFactory.createForUser(user);
-    const allowed = ability.can(
-      action,
-      subject("Inventory", { businessAccountId }),
-    );
-
-    if (!allowed) {
-      throwHttpError(
-        HttpStatus.FORBIDDEN,
-        "You do not have permission for this action",
-      );
-    }
-  }
 
   async create(
     businessAccountId: number,
     user: AuthenticatedUser,
     dto: CreateInventoryDto,
   ) {
-    this.assertInventoryCasl(user, Action.Create, businessAccountId);
+    assertBusinessPermission(
+      user,
+      businessAccountId,
+      "seller.inventory.create",
+    );
     await this.assertBusinessAccountExists(businessAccountId);
     await this.assertProductExists(dto.productId);
 
@@ -78,7 +61,11 @@ export class InventoriesService {
     user: AuthenticatedUser,
     dto: RestockInventoryDto,
   ) {
-    this.assertInventoryCasl(user, Action.Update, businessAccountId);
+    assertBusinessPermission(
+      user,
+      businessAccountId,
+      "seller.inventory.restock",
+    );
     await this.assertInventory(businessAccountId, inventoryId);
 
     return this.inventoriesRepository.transaction(async (tx) => {
@@ -102,7 +89,8 @@ export class InventoriesService {
     });
   }
 
-  async list(businessAccountId: number) {
+  async list(businessAccountId: number, user: AuthenticatedUser) {
+    assertBusinessPermission(user, businessAccountId, "seller.inventory.read");
     await this.assertBusinessAccountExists(businessAccountId);
 
     const rows =
@@ -119,7 +107,11 @@ export class InventoriesService {
     user: AuthenticatedUser,
     dto: UpdateInventoryDto,
   ) {
-    this.assertInventoryCasl(user, Action.Update, businessAccountId);
+    assertBusinessPermission(
+      user,
+      businessAccountId,
+      "seller.inventory.update",
+    );
     await this.assertInventory(businessAccountId, inventoryId);
 
     const updated = await this.inventoriesRepository.updateById(
@@ -131,7 +123,16 @@ export class InventoriesService {
     return updated;
   }
 
-  async listTransactions(businessAccountId: number, inventoryId: number) {
+  async listTransactions(
+    businessAccountId: number,
+    inventoryId: number,
+    user: AuthenticatedUser,
+  ) {
+    assertBusinessPermission(
+      user,
+      businessAccountId,
+      "seller.inventory.transactions.read",
+    );
     await this.assertInventory(businessAccountId, inventoryId);
 
     return this.storeInventoryTransactionsRepository.listByInventoryId(

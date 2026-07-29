@@ -5,6 +5,7 @@ import {
 } from "@casl/ability";
 import { Injectable } from "@nestjs/common";
 import type { AuthenticatedUser } from "../interfaces/index";
+import { hasPermission } from "../permissions/permission-scope";
 import { Action } from "./actions.enum";
 
 export type AppAbility = AnyMongoAbility;
@@ -14,10 +15,22 @@ export class CaslAbilityFactory {
   createForUser(user: AuthenticatedUser) {
     const { can, build } = new AbilityBuilder<AppAbility>(createMongoAbility);
 
-    const writableBusinessAccountIds = user.businessMemberships
+    const inventoryCreateBusinessAccountIds = user.businessMemberships
+      .filter((membership) =>
+        membership.permissions.includes("seller.inventory.create"),
+      )
+      .map((membership) => membership.businessAccountId)
+      .filter(
+        (businessAccountId, index, all) =>
+          all.indexOf(businessAccountId) === index,
+      );
+
+    const inventoryUpdateBusinessAccountIds = user.businessMemberships
       .filter((membership) =>
         membership.permissions.some((permission) =>
-          permission.endsWith(".write"),
+          ["seller.inventory.update", "seller.inventory.restock"].includes(
+            permission,
+          ),
         ),
       )
       .map((membership) => membership.businessAccountId)
@@ -26,8 +39,10 @@ export class CaslAbilityFactory {
           all.indexOf(businessAccountId) === index,
       );
 
-    const hasWritePermissionInAnyBusinessAccount =
-      writableBusinessAccountIds.length > 0;
+    const canManageInventory =
+      hasPermission(user, "seller.inventory.create") ||
+      hasPermission(user, "seller.inventory.update") ||
+      hasPermission(user, "seller.inventory.restock");
     const isAdmin = user.isAdmin === true;
 
     if (isAdmin) {
@@ -35,27 +50,21 @@ export class CaslAbilityFactory {
       return build();
     }
 
-    if (hasWritePermissionInAnyBusinessAccount) {
+    if (canManageInventory) {
       can(Action.Create, "Brand");
       can(Action.Create, "Product");
       can(Action.Update, "Product");
     }
 
-    if (writableBusinessAccountIds.length > 0) {
+    if (inventoryCreateBusinessAccountIds.length > 0) {
       can(Action.Create, "Inventory", {
-        businessAccountId: { $in: writableBusinessAccountIds },
-      });
-      can(Action.Update, "Inventory", {
-        businessAccountId: { $in: writableBusinessAccountIds },
+        businessAccountId: { $in: inventoryCreateBusinessAccountIds },
       });
     }
 
-    if (writableBusinessAccountIds.length > 0) {
-      can(Action.Create, "PurchaseRequest", {
-        buyerBusinessAccountId: { $in: writableBusinessAccountIds },
-      });
-      can(Action.Update, "PurchaseRequest", {
-        buyerBusinessAccountId: { $in: writableBusinessAccountIds },
+    if (inventoryUpdateBusinessAccountIds.length > 0) {
+      can(Action.Update, "Inventory", {
+        businessAccountId: { $in: inventoryUpdateBusinessAccountIds },
       });
     }
 

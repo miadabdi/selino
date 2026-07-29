@@ -16,7 +16,7 @@ describe("PermissionsGuard", () => {
   const reflector = {
     getAllAndOverride: jest
       .fn()
-      .mockReturnValue(["seller.purchase-requests.read"]),
+      .mockReturnValue(["seller.purchase-requests.read.own"]),
   } as unknown as Reflector;
 
   beforeEach(() => {
@@ -39,7 +39,7 @@ describe("PermissionsGuard", () => {
         contextFor({
           id: 2,
           isAdmin: false,
-          permissions: ["seller.purchase-requests.read"],
+          permissions: ["seller.purchase-requests.read.own"],
         }),
       ),
     ).toBe(true);

@@ -102,7 +102,6 @@ describe("PurchaseRequestsService confirmation", () => {
       repository as never,
       inventories as never,
       inventoryTransactions as never,
-      { createForUser: () => ({ can: () => true }) } as never,
       {
         getOrThrow: (key: string) =>
           key === "PURCHASE_REQUEST_ACTIVE_WINDOW_MINUTES" ? 15 : 60_000,
@@ -113,13 +112,14 @@ describe("PurchaseRequestsService confirmation", () => {
     const user = {
       id: 10,
       isAdmin: false,
+      permissions: ["seller.purchase-requests.confirm.own"],
       businessMemberships: [
         {
           id: 1,
           businessAccountId: 100,
           businessName: "Buyer",
           role: "seller",
-          permissions: [],
+          permissions: ["seller.purchase-requests.confirm.own"],
           isActive: true,
         },
       ],
@@ -152,7 +152,6 @@ describe("PurchaseRequestsService listing", () => {
       repository as never,
       {} as never,
       {} as never,
-      {} as never,
       {
         getOrThrow: (key: string) =>
           key === "PURCHASE_REQUEST_ACTIVE_WINDOW_MINUTES" ? 15 : 60_000,
@@ -166,7 +165,7 @@ describe("PurchaseRequestsService listing", () => {
     businessAccountId: 100,
     businessName: "Buyer",
     role: "seller",
-    permissions: ["seller.purchase-requests.read"],
+    permissions: ["seller.purchase-requests.read.all"],
     isActive: true,
   };
 
@@ -183,6 +182,7 @@ describe("PurchaseRequestsService listing", () => {
     const user = {
       id: 10,
       isAdmin: false,
+      permissions: ["seller.purchase-requests.read.all"],
       businessMemberships: [membership],
     } as AuthenticatedUser;
 
@@ -192,12 +192,17 @@ describe("PurchaseRequestsService listing", () => {
         limit: 20,
       }),
     ).resolves.toEqual({
-      items: [{ id: 1, status: "confirmed" }],
+      items: [{ id: 1, status: "confirmed", isOwn: false }],
       page: 1,
       limit: 20,
       total: 1,
     });
-    expect(repository.listByBuyerBusiness).toHaveBeenCalledWith(100, 1, 20);
+    expect(repository.listByBuyerBusiness).toHaveBeenCalledWith(
+      100,
+      1,
+      20,
+      undefined,
+    );
   });
 
   it("rejects a non-admin filter for another business", async () => {
@@ -206,6 +211,7 @@ describe("PurchaseRequestsService listing", () => {
     const user = {
       id: 10,
       isAdmin: false,
+      permissions: ["seller.purchase-requests.read.all"],
       businessMemberships: [membership],
     } as AuthenticatedUser;
 
@@ -221,7 +227,7 @@ describe("PurchaseRequestsService listing", () => {
     }
 
     expect(thrown?.getResponse()).toEqual({
-      error: "Active buyer business membership is required",
+      error: "You do not have permission for this action",
     });
     expect(repository.listByBuyerBusiness).not.toHaveBeenCalled();
   });
@@ -232,6 +238,7 @@ describe("PurchaseRequestsService listing", () => {
     const user = {
       id: 10,
       isAdmin: false,
+      permissions: ["seller.purchase-requests.read.all"],
       businessMemberships: [
         membership,
         { ...membership, id: 2, businessAccountId: 200 },
@@ -267,6 +274,7 @@ describe("PurchaseRequestsService listing", () => {
     const admin = {
       id: 1,
       isAdmin: true,
+      permissions: [],
       businessMemberships: [],
     } as AuthenticatedUser;
 
@@ -282,12 +290,14 @@ describe("PurchaseRequestsService listing", () => {
       undefined,
       1,
       20,
+      undefined,
     );
     expect(repository.listByBuyerBusiness).toHaveBeenNthCalledWith(
       2,
       200,
       2,
       10,
+      undefined,
     );
   });
 });
@@ -310,7 +320,6 @@ describe("PurchaseRequestsService store-scoped mutations", () => {
       repository as never,
       {} as never,
       {} as never,
-      { createForUser: () => ({ can: () => true }) } as never,
       {
         getOrThrow: (key: string) =>
           key === "PURCHASE_REQUEST_ACTIVE_WINDOW_MINUTES" ? 15 : 60_000,
@@ -321,13 +330,14 @@ describe("PurchaseRequestsService store-scoped mutations", () => {
     const manager = {
       id: 10,
       isAdmin: false,
+      permissions: ["seller.purchase-requests.cancel.all"],
       businessMemberships: [
         {
           id: 1,
           businessAccountId: 100,
           businessName: "Buyer",
           role: "manager",
-          permissions: ["seller.purchase-requests.write"],
+          permissions: ["seller.purchase-requests.cancel.all"],
           isActive: true,
         },
       ],

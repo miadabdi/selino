@@ -215,12 +215,17 @@ export class PurchaseRequestsRepository extends AbstractRepository {
     buyerBusinessAccountId: number | undefined,
     page: number,
     limit: number,
+    requesterId?: number,
     txContext: TXContext = this.db,
   ) {
-    const condition =
+    const condition = and(
       buyerBusinessAccountId == null
         ? undefined
-        : eq(purchaseRequests.buyerBusinessAccountId, buyerBusinessAccountId);
+        : eq(purchaseRequests.buyerBusinessAccountId, buyerBusinessAccountId),
+      requesterId == null
+        ? undefined
+        : eq(purchaseRequests.requesterId, requesterId),
+    );
     const [items, countRows] = await Promise.all([
       txContext.query.purchaseRequests.findMany({
         where: condition,
@@ -269,6 +274,24 @@ export class PurchaseRequestsRepository extends AbstractRepository {
       .limit(1)
       .for("update");
     return request;
+  }
+
+  async requesterHasActiveMembership(
+    requesterId: number,
+    businessAccountId: number,
+    txContext: TXContext = this.db,
+  ) {
+    const membership = await txContext.query.businessMembers.findFirst({
+      columns: { id: true },
+      where: (table) =>
+        and(
+          eq(table.userId, requesterId),
+          eq(table.businessAccountId, businessAccountId),
+          eq(table.isActive, true),
+        ),
+    });
+
+    return membership != null;
   }
 
   listItemsByRequestId(
@@ -333,8 +356,12 @@ export class PurchaseRequestsRepository extends AbstractRepository {
   async createInvoiceItem(
     data: NewInvoiceItem,
     txContext: TXContext = this.db,
-  ): Promise<void> {
-    await txContext.insert(invoiceItems).values(data);
+  ) {
+    const [created] = await txContext
+      .insert(invoiceItems)
+      .values(data)
+      .returning();
+    return created;
   }
 
   async setInvoiceStatus(
